@@ -10,6 +10,7 @@
 #include "atom/browser/ui/cocoa/atom_touch_bar.h"
 #include "base/mac/mac_util.h"
 #include "ui/views/widget/native_widget_mac.h"
+#include "ui/views_bridge_mac/bridged_native_widget_impl.h"
 
 @implementation AtomNSWindowDelegate
 
@@ -20,9 +21,8 @@
   // on the fly.
   // TODO(zcbenz): Add interface in NativeWidgetMac to allow overriding creating
   // window delegate.
-  views::BridgedNativeWidget* bridged_view =
-      views::NativeWidgetMac::GetBridgeForNativeWindow(
-          shell->GetNativeWindow());
+  auto* bridged_view = views::BridgedNativeWidgetImpl::GetFromNativeWindow(
+      shell->GetNativeWindow());
   if ((self = [super initWithBridgedNativeWidget:bridged_view])) {
     shell_ = shell;
     is_zooming_ = false;
@@ -212,7 +212,8 @@
 
       // Set window style to hide the toolbar, otherwise the toolbar will show
       // in fullscreen mode.
-      shell_->SetStyleMask(true, NSFullSizeContentViewWindowMask);
+      [window setTitlebarAppearsTransparent:NO];
+      shell_->SetStyleMask(true, NSWindowStyleMaskFullSizeContentView);
     }
   }
 }
@@ -229,7 +230,8 @@
 
     // Turn off the style for toolbar.
     if (shell_->title_bar_style() == atom::NativeWindowMac::HIDDEN_INSET) {
-      shell_->SetStyleMask(false, NSFullSizeContentViewWindowMask);
+      shell_->SetStyleMask(false, NSWindowStyleMaskFullSizeContentView);
+      [window setTitlebarAppearsTransparent:YES];
     }
   }
 }
@@ -245,7 +247,9 @@
   // Clears the delegate when window is going to be closed, since EL Capitan it
   // is possible that the methods of delegate would get called after the window
   // has been closed.
-  [shell_->GetNativeWindow() setDelegate:nil];
+  auto* bridged_view = views::BridgedNativeWidgetImpl::GetFromNativeWindow(
+      shell_->GetNativeWindow());
+  bridged_view->OnWindowWillClose();
 }
 
 - (BOOL)windowShouldClose:(id)window {

@@ -4,6 +4,7 @@
 
 #include "atom/browser/net/atom_network_delegate.h"
 
+#include <memory>
 #include <utility>
 
 #include "atom/browser/api/atom_api_web_contents.h"
@@ -13,16 +14,16 @@
 #include "base/command_line.h"
 #include "base/stl_util.h"
 #include "base/strings/string_util.h"
+#include "base/task/post_task.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/resource_request_info.h"
 #include "net/base/load_flags.h"
 #include "net/base/net_errors.h"
 #include "net/url_request/url_request.h"
-#include "services/network/throttling/throttling_network_transaction.h"
 
 using content::BrowserThread;
-using network::ThrottlingNetworkTransaction;
 
 namespace atom {
 
@@ -268,14 +269,9 @@ void AtomNetworkDelegate::SetResponseListenerInIO(ResponseEvent type,
     response_listeners_[type] = {std::move(patterns), std::move(callback)};
 }
 
-void AtomNetworkDelegate::SetDevToolsNetworkEmulationClientId(
-    const std::string& client_id) {
-  client_id_ = client_id;
-}
-
 int AtomNetworkDelegate::OnBeforeURLRequest(
     net::URLRequest* request,
-    const net::CompletionCallback& callback,
+    net::CompletionOnceCallback callback,
     GURL* new_url) {
   if (!base::ContainsKey(response_listeners_, kOnBeforeRequest)) {
     for (const auto& domain : ignore_connections_limit_domains_) {
@@ -289,22 +285,19 @@ int AtomNetworkDelegate::OnBeforeURLRequest(
     return net::OK;
   }
 
-  return HandleResponseEvent(kOnBeforeRequest, request, callback, new_url);
+  return HandleResponseEvent(kOnBeforeRequest, request, std::move(callback),
+                             new_url);
 }
 
 int AtomNetworkDelegate::OnBeforeStartTransaction(
     net::URLRequest* request,
-    const net::CompletionCallback& callback,
+    net::CompletionOnceCallback callback,
     net::HttpRequestHeaders* headers) {
-  if (!client_id_.empty())
-    headers->SetHeader(network::ThrottlingNetworkTransaction::
-                           kDevToolsEmulateNetworkConditionsClientId,
-                       client_id_);
   if (!base::ContainsKey(response_listeners_, kOnBeforeSendHeaders))
     return net::OK;
 
-  return HandleResponseEvent(kOnBeforeSendHeaders, request, callback, headers,
-                             *headers);
+  return HandleResponseEvent(kOnBeforeSendHeaders, request, std::move(callback),
+                             headers, *headers);
 }
 
 void AtomNetworkDelegate::OnStartTransaction(
@@ -318,7 +311,7 @@ void AtomNetworkDelegate::OnStartTransaction(
 
 int AtomNetworkDelegate::OnHeadersReceived(
     net::URLRequest* request,
-    const net::CompletionCallback& callback,
+    net::CompletionOnceCallback callback,
     const net::HttpResponseHeaders* original,
     scoped_refptr<net::HttpResponseHeaders>* override,
     GURL* allowed) {
@@ -326,7 +319,7 @@ int AtomNetworkDelegate::OnHeadersReceived(
     return net::OK;
 
   return HandleResponseEvent(
-      kOnHeadersReceived, request, callback,
+      kOnHeadersReceived, request, std::move(callback),
       std::make_pair(override, original->GetStatusLine()), original);
 }
 
@@ -352,14 +345,16 @@ void AtomNetworkDelegate::OnResponseStarted(net::URLRequest* request,
                     request->was_cached());
 }
 
-void AtomNetworkDelegate::OnCompleted(net::URLRequest* request, bool started) {
+void AtomNetworkDelegate::OnCompleted(net::URLRequest* request,
+                                      bool started,
+                                      int net_error) {
   // OnCompleted may happen before other events.
   callbacks_.erase(request->identifier());
 
   if (request->status().status() == net::URLRequestStatus::FAILED ||
       request->status().status() == net::URLRequestStatus::CANCELED) {
     // Error event.
-    OnErrorOccurred(request, started);
+    OnErrorOccurred(request, started, net_error);
     return;
   }
 
@@ -390,7 +385,7 @@ void AtomNetworkDelegate::OnURLRequestDestroyed(net::URLRequest* request) {
 net::NetworkDelegate::AuthRequiredResponse AtomNetworkDelegate::OnAuthRequired(
     net::URLRequest* request,
     const net::AuthChallengeInfo& auth_info,
-    const AuthCallback& callback,
+    AuthCallback callback,
     net::AuthCredentials* credentials) {
   auto* resource_request_info =
       content::ResourceRequestInfo::ForRequest(request);
@@ -404,14 +399,16 @@ net::NetworkDelegate::AuthRequiredResponse AtomNetworkDelegate::OnAuthRequired(
 }
 
 bool AtomNetworkDelegate::OnCanGetCookies(const net::URLRequest& request,
-                                          const net::CookieList& cookie_list) {
+                                          const net::CookieList& cookie_list,
+                                          bool allowed_from_caller) {
   return true;
 }
 
 bool AtomNetworkDelegate::OnCanSetCookie(
     const net::URLRequest& request,
     const net::CanonicalCookie& cookie_line,
-    net::CookieOptions* options) {
+    net::CookieOptions* options,
+    bool allowed_from_caller) {
   return true;
 }
 
@@ -461,7 +458,8 @@ bool AtomNetworkDelegate::OnCanUseReportingClient(const url::Origin& origin,
 }
 
 void AtomNetworkDelegate::OnErrorOccurred(net::URLRequest* request,
-                                          bool started) {
+                                          bool started,
+                                          int net_error) {
   if (!base::ContainsKey(simple_listeners_, kOnErrorOccurred))
     return;
 
@@ -473,7 +471,7 @@ template <typename Out, typename... Args>
 int AtomNetworkDelegate::HandleResponseEvent(
     ResponseEvent type,
     net::URLRequest* request,
-    const net::CompletionCallback& callback,
+    net::CompletionOnceCallback callback,
     Out out,
     Args... args) {
   const auto& info = response_listeners_[type];
@@ -488,13 +486,13 @@ int AtomNetworkDelegate::HandleResponseEvent(
       request, &render_process_id, &render_frame_id);
 
   // The |request| could be destroyed before the |callback| is called.
-  callbacks_[request->identifier()] = callback;
+  callbacks_[request->identifier()] = std::move(callback);
 
   ResponseCallback response =
       base::Bind(&AtomNetworkDelegate::OnListenerResultInUI<Out>,
                  base::Unretained(this), request->identifier(), out);
-  BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(RunResponseListener, info.listener, std::move(details),
                      render_process_id, render_frame_id, response));
   return net::ERR_IO_PENDING;
@@ -515,8 +513,8 @@ void AtomNetworkDelegate::HandleSimpleEvent(SimpleEvent type,
   content::ResourceRequestInfo::GetRenderFrameForRequest(
       request, &render_process_id, &render_frame_id);
 
-  BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(RunSimpleListener, info.listener, std::move(details),
                      render_process_id, render_frame_id));
 }
@@ -534,7 +532,7 @@ void AtomNetworkDelegate::OnListenerResultInIO(
 
   bool cancel = false;
   response->GetBoolean("cancel", &cancel);
-  callbacks_[id].Run(cancel ? net::ERR_BLOCKED_BY_CLIENT : net::OK);
+  std::move(callbacks_[id]).Run(cancel ? net::ERR_BLOCKED_BY_CLIENT : net::OK);
 }
 
 template <typename T>
@@ -544,8 +542,8 @@ void AtomNetworkDelegate::OnListenerResultInUI(
     const base::DictionaryValue& response) {
   auto copy = base::DictionaryValue::From(
       base::Value::ToUniquePtrValue(response.Clone()));
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(&AtomNetworkDelegate::OnListenerResultInIO<T>,
                      base::Unretained(this), id, out, std::move(copy)));
 }

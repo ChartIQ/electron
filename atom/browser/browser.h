@@ -5,6 +5,7 @@
 #ifndef ATOM_BROWSER_BROWSER_H_
 #define ATOM_BROWSER_BROWSER_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -179,9 +180,12 @@ class Browser : public WindowListObserver {
   // Set docks' icon.
   void DockSetIcon(const gfx::Image& image);
 
+#endif  // defined(OS_MACOSX)
+
+#if defined(OS_MACOSX) || defined(OS_LINUX)
   void ShowAboutPanel();
   void SetAboutPanelOptions(const base::DictionaryValue& options);
-#endif  // defined(OS_MACOSX)
+#endif
 
 #if defined(OS_WIN)
   struct UserTask {
@@ -238,6 +242,10 @@ class Browser : public WindowListObserver {
 
   void PreMainMessageLoopRun();
 
+  // Stores the supplied |quit_closure|, to be run when the last Browser
+  // instance is destroyed.
+  static void SetMainMessageLoopQuitClosure(base::OnceClosure quit_closure);
+
   void AddObserver(BrowserObserver* obs) { observers_.AddObserver(obs); }
 
   void RemoveObserver(BrowserObserver* obs) { observers_.RemoveObserver(obs); }
@@ -283,7 +291,7 @@ class Browser : public WindowListObserver {
 
   util::Promise* ready_promise_ = nullptr;
 
-#if defined(OS_MACOSX)
+#if defined(OS_LINUX) || defined(OS_MACOSX)
   base::DictionaryValue about_panel_options_;
 #endif
 

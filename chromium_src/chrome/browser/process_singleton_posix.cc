@@ -82,12 +82,14 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/post_task.h"
 #include "base/threading/platform_thread.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "build/build_config.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "net/base/network_interfaces.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -323,7 +325,7 @@ bool IsChromeProcess(pid_t pid) {
 
   auto* command_line = base::CommandLine::ForCurrentProcess();
   base::FilePath exec_path(command_line->GetProgram());
-  PathService::Get(base::FILE_EXE, &exec_path);
+  base::PathService::Get(base::FILE_EXE, &exec_path);
 
   return (!other_chrome_path.empty() &&
           other_chrome_path.BaseName() == exec_path.BaseName());
@@ -702,8 +704,8 @@ void ProcessSingleton::LinuxWatcher::SocketReader::FinishWithACK(
   if (shutdown(fd_, SHUT_WR) < 0)
     PLOG(ERROR) << "shutdown() failed";
 
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::Bind(&ProcessSingleton::LinuxWatcher::RemoveSocketReader, parent_,
                  this));
   // We will be deleted once the posted RemoveSocketReader task runs.
@@ -820,7 +822,7 @@ ProcessSingleton::NotifyResult ProcessSingleton::NotifyOtherProcessWithTimeout(
   to_send.push_back(kTokenDelimiter);
 
   base::FilePath current_dir;
-  if (!PathService::Get(base::DIR_CURRENT, &current_dir))
+  if (!base::PathService::Get(base::DIR_CURRENT, &current_dir))
     return PROCESS_NONE;
   to_send.append(current_dir.value());
 
@@ -882,8 +884,8 @@ ProcessSingleton::NotifyResult ProcessSingleton::NotifyOtherProcessOrCreate() {
 
 void ProcessSingleton::StartListeningOnSocket() {
   watcher_ = new LinuxWatcher(this);
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::Bind(&ProcessSingleton::LinuxWatcher::StartListening, watcher_,
                  sock_));
 }
@@ -1045,7 +1047,7 @@ bool ProcessSingleton::Create() {
 
   sock_ = sock;
 
-  if (BrowserThread::IsMessageLoopValid(BrowserThread::IO)) {
+  if (BrowserThread::IsThreadInitialized(BrowserThread::IO)) {
     StartListeningOnSocket();
   } else {
     listen_on_ready_ = true;

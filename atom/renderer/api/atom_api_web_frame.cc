@@ -18,17 +18,19 @@
 #include "content/public/renderer/render_view.h"
 #include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
-#include "third_party/WebKit/Source/platform/weborigin/SchemeRegistry.h"
-#include "third_party/WebKit/public/platform/WebCache.h"
-#include "third_party/WebKit/public/web/WebDocument.h"
-#include "third_party/WebKit/public/web/WebElement.h"
-#include "third_party/WebKit/public/web/WebFrameWidget.h"
-#include "third_party/WebKit/public/web/WebImeTextSpan.h"
-#include "third_party/WebKit/public/web/WebInputMethodController.h"
-#include "third_party/WebKit/public/web/WebLocalFrame.h"
-#include "third_party/WebKit/public/web/WebScriptExecutionCallback.h"
-#include "third_party/WebKit/public/web/WebScriptSource.h"
-#include "third_party/WebKit/public/web/WebView.h"
+#include "third_party/blink/public/platform/web_cache.h"
+#include "third_party/blink/public/web/web_custom_element.h"
+#include "third_party/blink/public/web/web_document.h"
+#include "third_party/blink/public/web/web_element.h"
+#include "third_party/blink/public/web/web_frame_widget.h"
+#include "third_party/blink/public/web/web_ime_text_span.h"
+#include "third_party/blink/public/web/web_input_method_controller.h"
+#include "third_party/blink/public/web/web_local_frame.h"
+#include "third_party/blink/public/web/web_script_execution_callback.h"
+#include "third_party/blink/public/web/web_script_source.h"
+#include "third_party/blink/public/web/web_view.h"
+#include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
+#include "url/url_util.h"
 
 #include "atom/common/node_includes.h"
 
@@ -187,11 +189,15 @@ void WebFrame::SetLayoutZoomLevelLimits(double min_level, double max_level) {
   web_frame_->View()->ZoomLimitsChanged(min_level, max_level);
 }
 
-v8::Local<v8::Value> WebFrame::RegisterEmbedderCustomElement(
-    const base::string16& name,
-    v8::Local<v8::Object> options) {
-  return web_frame_->GetDocument().RegisterEmbedderCustomElement(
-      blink::WebString::FromUTF16(name), options);
+void WebFrame::AllowGuestViewElementDefinition(
+    v8::Local<v8::Object> context,
+    v8::Local<v8::Function> register_cb) {
+  v8::HandleScope handle_scope(isolate());
+  v8::Context::Scope context_scope(context->CreationContext());
+  blink::WebCustomElement::EmbedderNamesAllowedScope embedder_names_scope;
+  web_frame_->RequestExecuteV8Function(context->CreationContext(), register_cb,
+                                       v8::Null(isolate()), 0, nullptr,
+                                       nullptr);
 }
 
 int WebFrame::GetWebFrameId(v8::Local<v8::Value> content_window) {
@@ -215,15 +221,14 @@ int WebFrame::GetWebFrameId(v8::Local<v8::Value> content_window) {
 
 void WebFrame::SetSpellCheckProvider(mate::Arguments* args,
                                      const std::string& language,
-                                     bool auto_spell_correct_turned_on,
                                      v8::Local<v8::Object> provider) {
   if (!provider->Has(mate::StringToV8(args->isolate(), "spellCheck"))) {
     args->ThrowError("\"spellCheck\" has to be defined");
     return;
   }
 
-  auto client = std::make_unique<SpellCheckClient>(
-      language, auto_spell_correct_turned_on, args->isolate(), provider);
+  auto client =
+      std::make_unique<SpellCheckClient>(language, args->isolate(), provider);
   // Set spellchecker for all live frames in the same process or
   // in the sandbox mode for all live sub frames to this WebFrame.
   FrameSpellChecker spell_checker(
@@ -277,7 +282,7 @@ void WebFrame::RegisterURLSchemeAsPrivileged(const std::string& scheme,
         privileged_scheme);
   }
   if (corsEnabled) {
-    blink::SchemeRegistry::RegisterURLSchemeAsCORSEnabled(privileged_scheme);
+    url::AddCORSEnabledScheme(scheme.c_str());
   }
 }
 
@@ -489,8 +494,8 @@ void WebFrame::BuildPrototype(v8::Isolate* isolate,
                  &WebFrame::SetVisualZoomLevelLimits)
       .SetMethod("setLayoutZoomLevelLimits",
                  &WebFrame::SetLayoutZoomLevelLimits)
-      .SetMethod("registerEmbedderCustomElement",
-                 &WebFrame::RegisterEmbedderCustomElement)
+      .SetMethod("allowGuestViewElementDefinition",
+                 &WebFrame::AllowGuestViewElementDefinition)
       .SetMethod("getWebFrameId", &WebFrame::GetWebFrameId)
       .SetMethod("setSpellCheckProvider", &WebFrame::SetSpellCheckProvider)
       .SetMethod("registerURLSchemeAsBypassingCSP",

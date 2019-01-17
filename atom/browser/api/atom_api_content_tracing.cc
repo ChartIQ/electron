@@ -7,6 +7,7 @@
 
 #include "atom/common/native_mate_converters/callback.h"
 #include "atom/common/native_mate_converters/file_path_converter.h"
+#include "atom/common/native_mate_converters/value_converter.h"
 #include "base/bind.h"
 #include "base/files/file_util.h"
 #include "content/public/browser/tracing_controller.h"
@@ -23,15 +24,27 @@ struct Converter<base::trace_event::TraceConfig> {
   static bool FromV8(v8::Isolate* isolate,
                      v8::Local<v8::Value> val,
                      base::trace_event::TraceConfig* out) {
+    // (alexeykuzmin): A combination of "categoryFilter" and "traceOptions"
+    // has to be checked first because none of the fields
+    // in the `memory_dump_config` dict below are mandatory
+    // and we cannot check the config format.
     Dictionary options;
-    if (!ConvertFromV8(isolate, val, &options))
-      return false;
-    std::string category_filter, trace_options;
-    if (!options.Get("categoryFilter", &category_filter) ||
-        !options.Get("traceOptions", &trace_options))
-      return false;
-    *out = base::trace_event::TraceConfig(category_filter, trace_options);
-    return true;
+    if (ConvertFromV8(isolate, val, &options)) {
+      std::string category_filter, trace_options;
+      if (options.Get("categoryFilter", &category_filter) &&
+          options.Get("traceOptions", &trace_options)) {
+        *out = base::trace_event::TraceConfig(category_filter, trace_options);
+        return true;
+      }
+    }
+
+    base::DictionaryValue memory_dump_config;
+    if (ConvertFromV8(isolate, val, &memory_dump_config)) {
+      *out = base::trace_event::TraceConfig(memory_dump_config);
+      return true;
+    }
+
+    return false;
   }
 };
 
@@ -58,20 +71,34 @@ void StopRecording(const base::FilePath& path,
       GetTraceDataEndpoint(path, callback));
 }
 
+bool GetCategories(
+    const base::RepeatingCallback<void(const std::set<std::string>&)>&
+        callback) {
+  return TracingController::GetInstance()->GetCategories(
+      base::BindOnce(callback));
+}
+
+bool StartTracing(const base::trace_event::TraceConfig& trace_config,
+                  const base::RepeatingCallback<void()>& callback) {
+  return TracingController::GetInstance()->StartTracing(
+      trace_config, base::BindOnce(callback));
+}
+
+bool GetTraceBufferUsage(
+    const base::RepeatingCallback<void(float, size_t)>& callback) {
+  return TracingController::GetInstance()->GetTraceBufferUsage(
+      base::BindOnce(callback));
+}
+
 void Initialize(v8::Local<v8::Object> exports,
                 v8::Local<v8::Value> unused,
                 v8::Local<v8::Context> context,
                 void* priv) {
-  auto controller = base::Unretained(TracingController::GetInstance());
   mate::Dictionary dict(context->GetIsolate(), exports);
-  dict.SetMethod("getCategories",
-                 base::Bind(&TracingController::GetCategories, controller));
-  dict.SetMethod("startRecording",
-                 base::Bind(&TracingController::StartTracing, controller));
+  dict.SetMethod("getCategories", &GetCategories);
+  dict.SetMethod("startRecording", &StartTracing);
   dict.SetMethod("stopRecording", &StopRecording);
-  dict.SetMethod(
-      "getTraceBufferUsage",
-      base::Bind(&TracingController::GetTraceBufferUsage, controller));
+  dict.SetMethod("getTraceBufferUsage", &GetTraceBufferUsage);
 }
 
 }  // namespace

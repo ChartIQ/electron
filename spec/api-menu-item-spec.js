@@ -1,12 +1,12 @@
 const chai = require('chai')
 const dirtyChai = require('dirty-chai')
 
-const {remote} = require('electron')
-const {BrowserWindow, app, Menu, MenuItem} = remote
+const { remote } = require('electron')
+const { BrowserWindow, app, Menu, MenuItem } = remote
 const roles = require('../lib/browser/api/menu-item-roles')
-const {closeWindow} = require('./window-helpers')
+const { closeWindow } = require('./window-helpers')
 
-const {expect} = chai
+const { expect, assert } = chai
 chai.use(dirtyChai)
 
 describe('MenuItems', () => {
@@ -49,10 +49,10 @@ describe('MenuItems', () => {
     })
 
     describe('MenuItem group properties', () => {
-      let template = []
+      const template = []
 
       const findRadioGroups = (template) => {
-        let groups = []
+        const groups = []
         let cur = null
         for (let i = 0; i <= template.length; i++) {
           if (cur && ((i === template.length) || (template[i].type !== 'radio'))) {
@@ -68,7 +68,7 @@ describe('MenuItems', () => {
 
       // returns array of checked menuitems in [begin,end)
       const findChecked = (menuItems, begin, end) => {
-        let checked = []
+        const checked = []
         for (let i = begin; i < end; i++) {
           if (menuItems[i].checked) checked.push(i)
         }
@@ -83,7 +83,7 @@ describe('MenuItems', () => {
           })
         }
 
-        template.push({type: 'separator'})
+        template.push({ type: 'separator' })
 
         for (let i = 12; i <= 20; i++) {
           template.push({
@@ -107,7 +107,7 @@ describe('MenuItems', () => {
       it('should assign groupId automatically', () => {
         const menu = Menu.buildFromTemplate(template)
 
-        let usedGroupIds = new Set()
+        const usedGroupIds = new Set()
         const groups = findRadioGroups(template)
         groups.forEach(g => {
           const groupId = menu.items[g.begin].groupId
@@ -142,8 +142,8 @@ describe('MenuItems', () => {
 
   describe('MenuItem role execution', () => {
     it('does not try to execute roles without a valid role property', () => {
-      let win = new BrowserWindow({show: false, width: 200, height: 200})
-      let item = new MenuItem({role: 'asdfghjkl'})
+      let win = new BrowserWindow({ show: false, width: 200, height: 200 })
+      const item = new MenuItem({ role: 'asdfghjkl' })
 
       const canExecute = roles.execute(item.role, win, win.webContents)
       expect(canExecute).to.be.false()
@@ -152,8 +152,8 @@ describe('MenuItems', () => {
     })
 
     it('executes roles with native role functions', () => {
-      let win = new BrowserWindow({show: false, width: 200, height: 200})
-      let item = new MenuItem({role: 'reload'})
+      let win = new BrowserWindow({ show: false, width: 200, height: 200 })
+      const item = new MenuItem({ role: 'reload' })
 
       const canExecute = roles.execute(item.role, win, win.webContents)
       expect(canExecute).to.be.true()
@@ -162,8 +162,8 @@ describe('MenuItems', () => {
     })
 
     it('execute roles with non-native role functions', () => {
-      let win = new BrowserWindow({show: false, width: 200, height: 200})
-      let item = new MenuItem({role: 'resetzoom'})
+      let win = new BrowserWindow({ show: false, width: 200, height: 200 })
+      const item = new MenuItem({ role: 'resetzoom' })
 
       const canExecute = roles.execute(item.role, win, win.webContents)
       expect(canExecute).to.be.true()
@@ -174,7 +174,7 @@ describe('MenuItems', () => {
 
   describe('MenuItem command id', () => {
     it('cannot be overwritten', () => {
-      const item = new MenuItem({label: 'item'})
+      const item = new MenuItem({ label: 'item' })
 
       const commandId = item.commandId
       expect(commandId).to.not.be.undefined()
@@ -229,8 +229,8 @@ describe('MenuItems', () => {
         'zoomout'
       ]
 
-      for (let role in roleList) {
-        const item = new MenuItem({role})
+      for (const role in roleList) {
+        const item = new MenuItem({ role })
         expect(item.getDefaultRoleAccelerator()).to.be.undefined()
       }
     })
@@ -258,8 +258,8 @@ describe('MenuItems', () => {
         'zoomout': 'Zoom Out'
       }
 
-      for (let role in roleList) {
-        const item = new MenuItem({role})
+      for (const role in roleList) {
+        const item = new MenuItem({ role })
         expect(item.label).to.equal(roleList[role])
       }
     })
@@ -287,8 +287,8 @@ describe('MenuItems', () => {
         'zoomout': 'CommandOrControl+-'
       }
 
-      for (let role in roleList) {
-        const item = new MenuItem({role})
+      for (const role in roleList) {
+        const item = new MenuItem({ role })
         expect(item.getDefaultRoleAccelerator()).to.equal(roleList[role])
       }
     })
@@ -306,9 +306,67 @@ describe('MenuItems', () => {
     })
   })
 
+  describe('MenuItem appMenu', () => {
+    before(function () {
+      if (process.platform !== 'darwin') {
+        this.skip()
+      }
+    })
+
+    it('includes a default submenu layout when submenu is empty', () => {
+      const item = new MenuItem({ role: 'appMenu' })
+
+      expect(item.label).to.equal(app.getName())
+      expect(item.submenu.items[0].role).to.equal('about')
+      expect(item.submenu.items[1].type).to.equal('separator')
+      expect(item.submenu.items[2].role).to.equal('services')
+      expect(item.submenu.items[3].type).to.equal('separator')
+      expect(item.submenu.items[4].role).to.equal('hide')
+      expect(item.submenu.items[5].role).to.equal('hideothers')
+      expect(item.submenu.items[6].role).to.equal('unhide')
+      expect(item.submenu.items[7].type).to.equal('separator')
+      expect(item.submenu.items[8].role).to.equal('quit')
+    })
+
+    it('overrides default layout when submenu is specified', () => {
+      const item = new MenuItem({
+        role: 'appMenu',
+        submenu: [{
+          role: 'close'
+        }]
+      })
+      expect(item.label).to.equal(app.getName())
+      expect(item.submenu.items[0].role).to.equal('close')
+    })
+  })
+
+  describe('MenuItem fileMenu', () => {
+    it('includes a default submenu layout when submenu is empty', () => {
+      const item = new MenuItem({ role: 'fileMenu' })
+
+      expect(item.label).to.equal('File')
+      if (process.platform === 'darwin') {
+        expect(item.submenu.items[0].role).to.equal('close')
+      } else {
+        expect(item.submenu.items[0].role).to.equal('quit')
+      }
+    })
+
+    it('overrides default layout when submenu is specified', () => {
+      const item = new MenuItem({
+        role: 'fileMenu',
+        submenu: [{
+          role: 'about'
+        }]
+      })
+      expect(item.label).to.equal('File')
+      expect(item.submenu.items[0].role).to.equal('about')
+    })
+  })
+
   describe('MenuItem editMenu', () => {
     it('includes a default submenu layout when submenu is empty', () => {
-      const item = new MenuItem({role: 'editMenu'})
+      const item = new MenuItem({ role: 'editMenu' })
 
       expect(item.label).to.equal('Edit')
       expect(item.submenu.items[0].role).to.equal('undo')
@@ -322,9 +380,11 @@ describe('MenuItems', () => {
         expect(item.submenu.items[6].role).to.equal('pasteandmatchstyle')
         expect(item.submenu.items[7].role).to.equal('delete')
         expect(item.submenu.items[8].role).to.equal('selectall')
-      }
-
-      if (process.platform === 'win32') {
+        expect(item.submenu.items[9].type).to.equal('separator')
+        expect(item.submenu.items[10].label).to.equal('Speech')
+        expect(item.submenu.items[10].submenu.items[0].role).to.equal('startspeaking')
+        expect(item.submenu.items[10].submenu.items[1].role).to.equal('stopspeaking')
+      } else {
         expect(item.submenu.items[6].role).to.equal('delete')
         expect(item.submenu.items[7].type).to.equal('separator')
         expect(item.submenu.items[8].role).to.equal('selectall')
@@ -343,24 +403,54 @@ describe('MenuItems', () => {
     })
   })
 
+  describe('MenuItem viewMenu', () => {
+    it('includes a default submenu layout when submenu is empty', () => {
+      const item = new MenuItem({ role: 'viewMenu' })
+
+      expect(item.label).to.equal('View')
+      expect(item.submenu.items[0].role).to.equal('reload')
+      expect(item.submenu.items[1].role).to.equal('forcereload')
+      expect(item.submenu.items[2].role).to.equal('toggledevtools')
+      expect(item.submenu.items[3].type).to.equal('separator')
+      expect(item.submenu.items[4].role).to.equal('resetzoom')
+      expect(item.submenu.items[5].role).to.equal('zoomin')
+      expect(item.submenu.items[6].role).to.equal('zoomout')
+      expect(item.submenu.items[7].type).to.equal('separator')
+      expect(item.submenu.items[8].role).to.equal('togglefullscreen')
+    })
+
+    it('overrides default layout when submenu is specified', () => {
+      const item = new MenuItem({
+        role: 'viewMenu',
+        submenu: [{
+          role: 'close'
+        }]
+      })
+      expect(item.label).to.equal('View')
+      expect(item.submenu.items[0].role).to.equal('close')
+    })
+  })
+
   describe('MenuItem windowMenu', () => {
     it('includes a default submenu layout when submenu is empty', () => {
-      const item = new MenuItem({role: 'windowMenu'})
+      const item = new MenuItem({ role: 'windowMenu' })
 
       expect(item.label).to.equal('Window')
       expect(item.submenu.items[0].role).to.equal('minimize')
-      expect(item.submenu.items[1].role).to.equal('close')
+      expect(item.submenu.items[1].role).to.equal('zoom')
 
       if (process.platform === 'darwin') {
         expect(item.submenu.items[2].type).to.equal('separator')
         expect(item.submenu.items[3].role).to.equal('front')
+      } else {
+        expect(item.submenu.items[2].role).to.equal('close')
       }
     })
 
     it('overrides default layout when submenu is specified', () => {
       const item = new MenuItem({
         role: 'windowMenu',
-        submenu: [{role: 'copy'}]
+        submenu: [{ role: 'copy' }]
       })
 
       expect(item.label).to.equal('Window')
@@ -387,6 +477,66 @@ describe('MenuItems', () => {
       expect(menu.items[0].submenu.items[0].label).to.equal('item 1')
       expect(menu.items[0].submenu.items[0].customProp).to.equal('bar')
       expect(menu.items[0].submenu.items[0].overrideProperty).to.be.a('function')
+    })
+  })
+
+  describe('MenuItem accelerators', () => {
+    const isDarwin = () => {
+      return (process.platform === 'darwin')
+    }
+
+    it('should display modifiers correctly for simple keys', () => {
+      const menu = Menu.buildFromTemplate([
+        { label: 'text', accelerator: 'CmdOrCtrl+A' },
+        { label: 'text', accelerator: 'Shift+A' },
+        { label: 'text', accelerator: 'Alt+A' }
+      ])
+
+      assert.strictEqual(menu.getAcceleratorTextAt(0),
+        isDarwin() ? '⌘A' : 'Ctrl+A')
+      assert.strictEqual(menu.getAcceleratorTextAt(1),
+        isDarwin() ? '⇧A' : 'Shift+A')
+      assert.strictEqual(menu.getAcceleratorTextAt(2),
+        isDarwin() ? '⌥A' : 'Alt+A')
+    })
+
+    it('should display modifiers correctly for special keys', () => {
+      const menu = Menu.buildFromTemplate([
+        { label: 'text', accelerator: 'CmdOrCtrl+Tab' },
+        { label: 'text', accelerator: 'Shift+Tab' },
+        { label: 'text', accelerator: 'Alt+Tab' }
+      ])
+
+      assert.strictEqual(menu.getAcceleratorTextAt(0),
+        isDarwin() ? '⌘⇥\u0000' : 'Ctrl+Tab')
+      assert.strictEqual(menu.getAcceleratorTextAt(1),
+        isDarwin() ? '⇧⇥\u0000' : 'Shift+Tab')
+      assert.strictEqual(menu.getAcceleratorTextAt(2),
+        isDarwin() ? '⌥⇥\u0000' : 'Alt+Tab')
+    })
+
+    it('should not display modifiers twice', () => {
+      const menu = Menu.buildFromTemplate([
+        { label: 'text', accelerator: 'Shift+Shift+A' },
+        { label: 'text', accelerator: 'Shift+Shift+Tab' }
+      ])
+
+      assert.strictEqual(menu.getAcceleratorTextAt(0),
+        isDarwin() ? '⇧A' : 'Shift+A')
+      assert.strictEqual(menu.getAcceleratorTextAt(1),
+        isDarwin() ? '⇧⇥\u0000' : 'Shift+Tab')
+    })
+
+    it('should display correctly for edge cases', () => {
+      const menu = Menu.buildFromTemplate([
+        { label: 'text', accelerator: 'Control+Shift+=' },
+        { label: 'text', accelerator: 'Control+Plus' }
+      ])
+
+      assert.strictEqual(menu.getAcceleratorTextAt(0),
+        isDarwin() ? '⌃⇧=' : 'Ctrl+Shift+=')
+      assert.strictEqual(menu.getAcceleratorTextAt(1),
+        isDarwin() ? '⌃⇧=' : 'Ctrl+Shift+=')
     })
   })
 })

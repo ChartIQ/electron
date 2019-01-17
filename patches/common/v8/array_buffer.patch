@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Cheng Zhao <zcbenz@gmail.com>
+Date: Mon, 22 Oct 2018 10:47:12 -0700
+Subject: array_buffer.patch
+
+
+diff --git a/include/v8.h b/include/v8.h
+index b2301cd8d07c1ef57e77cedab920a43f0b498597..6934a9c3838641446fa96a8ab48abed4cfc1841c 100644
+--- a/include/v8.h
++++ b/include/v8.h
+@@ -7653,6 +7653,9 @@ class V8_EXPORT Isolate {
+    */
+   void SetIdle(bool is_idle);
+ 
++  /** Returns the ArrayBuffer::Allocator used in this isolate. */
++  ArrayBuffer::Allocator* GetArrayBufferAllocator();
++
+   /** Returns true if this isolate has a current context. */
+   bool InContext();
+ 
+diff --git a/src/api.cc b/src/api.cc
+index 2863b73e0677b666040766fef638abbc6fc95b8c..8d83474bcd0ed257b8f387d7996085c605326236 100644
+--- a/src/api.cc
++++ b/src/api.cc
+@@ -7984,6 +7984,13 @@ void Isolate::SetIdle(bool is_idle) {
+   isolate->SetIdle(is_idle);
+ }
+ 
++
++ArrayBuffer::Allocator* Isolate::GetArrayBufferAllocator() {
++  i::Isolate* isolate = reinterpret_cast<i::Isolate*>(this);
++  return isolate->array_buffer_allocator();
++}
++
++
+ bool Isolate::InContext() {
+   i::Isolate* isolate = reinterpret_cast<i::Isolate*>(this);
+   return isolate->context() != nullptr;
