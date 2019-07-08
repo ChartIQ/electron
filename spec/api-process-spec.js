@@ -38,6 +38,14 @@ describe('process module', () => {
     })
   })
 
+  describe('process.getBlinkMemoryInfo()', () => {
+    it('returns blink memory information object', () => {
+      const heapStats = process.getBlinkMemoryInfo()
+      expect(heapStats.allocated).to.be.a('number')
+      expect(heapStats.total).to.be.a('number')
+    })
+  })
+
   describe('process.getProcessMemoryInfo()', async () => {
     it('resolves promise successfully with valid data', async () => {
       const memoryInfo = await process.getProcessMemoryInfo()
@@ -56,6 +64,12 @@ describe('process module', () => {
       const systemMemoryInfo = process.getSystemMemoryInfo()
       expect(systemMemoryInfo.free).to.be.a('number')
       expect(systemMemoryInfo.total).to.be.a('number')
+    })
+  })
+
+  describe('process.getSystemVersion()', () => {
+    it('returns a string', () => {
+      expect(process.getSystemVersion()).to.be.a('string')
     })
   })
 

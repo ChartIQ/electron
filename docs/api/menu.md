@@ -10,7 +10,7 @@ Creates a new menu.
 
 ### Static Methods
 
-The `menu` class has the following static methods:
+The `Menu` class has the following static methods:
 
 #### `Menu.setApplicationMenu(menu)`
 
@@ -52,21 +52,20 @@ for more information on macOS' native actions.
 
 #### `Menu.buildFromTemplate(template)`
 
-* `template` MenuItemConstructorOptions[]
+* `template` (MenuItemConstructorOptions | MenuItem)[]
 
 Returns `Menu`
 
 Generally, the `template` is an array of `options` for constructing a
 [MenuItem](menu-item.md). The usage can be referenced above.
 
-You can also attach other fields to the element of the `template` and they
-will become properties of the constructed menu items.
+You can also attach other fields to the element of the `template` and they will become properties of the constructed menu items.
 
 ### Instance Methods
 
 The `menu` object has the following instance methods:
 
-#### `menu.popup(options)`
+#### `menu.popup([options])`
 
 * `options` Object (optional)
   * `window` [BrowserWindow](browser-window.md) (optional) - Default is the focused window.
@@ -108,7 +107,7 @@ Inserts the `menuItem` to the `pos` position of the menu.
 
 ### Instance Events
 
-Objects created with `new Menu` emit the following events:
+Objects created with `new Menu` or returned by `Menu.buildFromTemplate` emit the following events:
 
 **Note:** Some events are only available on specific operating systems and are
 labeled as such.
@@ -140,11 +139,6 @@ A `MenuItem[]` array containing the menu's items.
 Each `Menu` consists of multiple [`MenuItem`](menu-item.md)s and each `MenuItem`
 can have a submenu.
 
-### Instance Events
-
-Objects created with `new Menu` or returned by `Menu.buildFromTemplate` emit
-the following events:
-
 ## Examples
 
 The `Menu` class is only available in the main process, but you can also use it
@@ -158,10 +152,12 @@ simple template API:
 ```javascript
 const { app, Menu } = require('electron')
 
+const isMac = process.platform === 'darwin'
+
 const template = [
   // { role: 'appMenu' }
-  ...(process.platform === 'darwin' ? [{
-    label: app.getName(),
+  ...(isMac ? [{
+    label: app.name,
     submenu: [
       { role: 'about' },
       { type: 'separator' },
@@ -246,7 +242,10 @@ const template = [
     submenu: [
       {
         label: 'Learn More',
-        click () { require('electron').shell.openExternalSync('https://electronjs.org') }
+        click: async () => {
+          const { shell } = require('electron')
+          await shell.openExternal('https://electronjs.org')
+        }
       }
     ]
   }
@@ -269,7 +268,7 @@ const { remote } = require('electron')
 const { Menu, MenuItem } = remote
 
 const menu = new Menu()
-menu.append(new MenuItem({ label: 'MenuItem1', click() { console.log('item 1 clicked') } })))
+menu.append(new MenuItem({ label: 'MenuItem1', click() { console.log('item 1 clicked') } }))
 menu.append(new MenuItem({ type: 'separator' }))
 menu.append(new MenuItem({ label: 'MenuItem2', type: 'checkbox', checked: true }))
 
@@ -280,7 +279,6 @@ window.addEventListener('contextmenu', (e) => {
 </script>
 ```
 
-
 ## Notes on macOS Application Menu
 
 macOS has a completely different style of application menu from Windows and
@@ -288,7 +286,7 @@ Linux. Here are some notes on making your app's menu more native-like.
 
 ### Standard Menus
 
-On macOS there are many system-defined standard menus, like the `Services` and
+On macOS there are many system-defined standard menus, like the [`Services`](https://developer.apple.com/documentation/appkit/nsapplication/1428608-servicesmenu?language=objc) and
 `Windows` menus. To make your menu a standard menu, you should set your menu's
 `role` to one of the following and Electron will recognize them and make them
 become standard menus:

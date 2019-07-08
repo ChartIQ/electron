@@ -4,11 +4,35 @@
   window.ipcRenderer = ipcRenderer
   window.setImmediate = setImmediate
   window.require = require
+
+  function invoke (code) {
+    try {
+      return code()
+    } catch {
+      return null
+    }
+  }
+
+  process.once('loaded', () => {
+    ipcRenderer.send('process-loaded')
+  })
+
   if (location.protocol === 'file:') {
     window.test = 'preload'
     window.process = process
     if (process.env.sandboxmain) {
       window.test = {
+        osSandbox: !process.argv.includes('--no-sandbox'),
+        hasCrash: typeof process.crash === 'function',
+        hasHang: typeof process.hang === 'function',
+        creationTime: invoke(() => process.getCreationTime()),
+        heapStatistics: invoke(() => process.getHeapStatistics()),
+        blinkMemoryInfo: invoke(() => process.getBlinkMemoryInfo()),
+        processMemoryInfo: invoke(() => process.getProcessMemoryInfo()),
+        systemMemoryInfo: invoke(() => process.getSystemMemoryInfo()),
+        systemVersion: invoke(() => process.getSystemVersion()),
+        cpuUsage: invoke(() => process.getCPUUsage()),
+        ioCounters: invoke(() => process.getIOCounters()),
         env: process.env,
         execPath: process.execPath,
         pid: process.pid,

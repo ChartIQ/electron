@@ -2,12 +2,14 @@ const chai = require('chai')
 const dirtyChai = require('dirty-chai')
 
 const { ipcRenderer, remote } = require('electron')
-const { BrowserWindow, Menu, MenuItem } = remote
+const { BrowserWindow, globalShortcut, Menu, MenuItem } = remote
 const { sortMenuItems } = require('../lib/browser/api/menu-utils')
 const { closeWindow } = require('./window-helpers')
 
 const { expect } = chai
 chai.use(dirtyChai)
+
+const isCi = remote.getGlobal('isCi')
 
 describe('Menu module', () => {
   describe('Menu.buildFromTemplate', () => {
@@ -19,6 +21,37 @@ describe('Menu module', () => {
         }
       ])
       expect(menu.items[0].extra).to.equal('field')
+    })
+
+    it('should be able to accept only MenuItems', () => {
+      const menu = Menu.buildFromTemplate([
+        new MenuItem({ label: 'one' }),
+        new MenuItem({ label: 'two' })
+      ])
+      expect(menu.items[0].label).to.equal('one')
+      expect(menu.items[1].label).to.equal('two')
+    })
+
+    it('should be able to accept only MenuItems in a submenu', () => {
+      const menu = Menu.buildFromTemplate([
+        {
+          label: 'one',
+          submenu: [
+            new MenuItem({ label: 'two' })
+          ]
+        }
+      ])
+      expect(menu.items[0].label).to.equal('one')
+      expect(menu.items[0].submenu.items[0].label).to.equal('two')
+    })
+
+    it('should be able to accept MenuItems and plain objects', () => {
+      const menu = Menu.buildFromTemplate([
+        new MenuItem({ label: 'one' }),
+        { label: 'two' }
+      ])
+      expect(menu.items[0].label).to.equal('one')
+      expect(menu.items[1].label).to.equal('two')
     })
 
     it('does not modify the specified template', () => {
@@ -86,6 +119,21 @@ describe('Menu module', () => {
               afterGroupContaining: ['1']
             }
           ]
+
+          expect(sortMenuItems(items)).to.deep.equal(expected)
+        })
+
+        it('does a simple sort with MenuItems', () => {
+          const firstItem = new MenuItem({ id: '1', label: 'one' })
+          const secondItem = new MenuItem({
+            label: 'two',
+            id: '2',
+            afterGroupContaining: ['1']
+          })
+          const sep = new MenuItem({ type: 'separator' })
+
+          const items = [ secondItem, sep, firstItem ]
+          const expected = [ firstItem, sep, secondItem ]
 
           expect(sortMenuItems(items)).to.deep.equal(expected)
         })
@@ -571,6 +619,34 @@ describe('Menu module', () => {
         expect(menu.items[3].label).to.equal('four')
         expect(menu.items[4].label).to.equal('five')
       })
+
+      it('should continue inserting MenuItems at next index when no specifier is present', () => {
+        const menu = Menu.buildFromTemplate([
+          new MenuItem({
+            id: '2',
+            label: 'two'
+          }), new MenuItem({
+            id: '3',
+            label: 'three'
+          }), new MenuItem({
+            id: '4',
+            label: 'four'
+          }), new MenuItem({
+            id: '5',
+            label: 'five'
+          }), new MenuItem({
+            id: '1',
+            label: 'one',
+            before: ['2']
+          })
+        ])
+
+        expect(menu.items[0].label).to.equal('one')
+        expect(menu.items[1].label).to.equal('two')
+        expect(menu.items[2].label).to.equal('three')
+        expect(menu.items[3].label).to.equal('four')
+        expect(menu.items[4].label).to.equal('five')
+      })
     })
   })
 
@@ -614,6 +690,24 @@ describe('Menu module', () => {
   })
 
   describe('Menu.insert', () => {
+    it('should throw when attempting to insert at out-of-range indices', () => {
+      const menu = Menu.buildFromTemplate([
+        { label: '1' },
+        { label: '2' },
+        { label: '3' }
+      ])
+
+      const item = new MenuItem({ label: 'badInsert' })
+
+      expect(() => {
+        menu.insert(9999, item)
+      }).to.throw(/Position 9999 cannot be greater than the total MenuItem count/)
+
+      expect(() => {
+        menu.insert(-9999, item)
+      }).to.throw(/Position -9999 cannot be less than 0/)
+    })
+
     it('should store item in @items by its index', () => {
       const menu = Menu.buildFromTemplate([
         { label: '1' },
@@ -743,36 +837,63 @@ describe('Menu module', () => {
     })
   })
 
-  describe('menu accelerators', () => {
-    let testFn = it
-    try {
-      // We have other tests that check if native modules work, if we fail to require
-      // robotjs let's skip this test to avoid false negatives
-      require('robotjs')
-    } catch (err) {
-      testFn = it.skip
-    }
+  describe('menu accelerators', async () => {
     const sendRobotjsKey = (key, modifiers = [], delay = 500) => {
       return new Promise((resolve, reject) => {
-        require('robotjs').keyTap(key, modifiers)
-        setTimeout(() => {
-          resolve()
-        }, delay)
+        try {
+          require('robotjs').keyTap(key, modifiers)
+          setTimeout(() => {
+            resolve()
+          }, delay)
+        } catch (e) {
+          reject(e)
+        }
       })
     }
 
-    testFn('menu accelerators perform the specified action', async () => {
+    before(async function () {
+      // --ci flag breaks accelerator and robotjs interaction
+      if (isCi) {
+        this.skip()
+      }
+
+      // before accelerator tests, use globalShortcut to test if
+      // RobotJS is working at all
+      let isKeyPressed = false
+      globalShortcut.register('q', () => {
+        isKeyPressed = true
+      })
+      try {
+        await sendRobotjsKey('q')
+      } catch (e) {
+        this.skip()
+      }
+
+      if (!isKeyPressed) {
+        this.skip()
+      }
+
+      globalShortcut.unregister('q')
+    })
+
+    it('should perform the specified action', async () => {
+      let hasBeenClicked = false
       const menu = Menu.buildFromTemplate([
         {
           label: 'Test',
           submenu: [
             {
               label: 'Test Item',
-              accelerator: 'Ctrl+T',
-              click: () => {
-                // Test will succeed, only when the menu accelerator action
-                // is triggered
-                Promise.resolve()
+              accelerator: 'T',
+              click: (a, b, event) => {
+                hasBeenClicked = true
+                expect(event).to.deep.equal({
+                  shiftKey: false,
+                  ctrlKey: false,
+                  altKey: false,
+                  metaKey: false,
+                  triggeredByAccelerator: true
+                })
               },
               id: 'test'
             }
@@ -781,7 +902,31 @@ describe('Menu module', () => {
       ])
       Menu.setApplicationMenu(menu)
       expect(Menu.getApplicationMenu()).to.not.be.null()
-      await sendRobotjsKey('t', 'control')
+      await sendRobotjsKey('t')
+      expect(hasBeenClicked).to.equal(true)
+    })
+
+    it('should not activate upon clicking another key combination', async () => {
+      let hasBeenClicked = false
+      const menu = Menu.buildFromTemplate([
+        {
+          label: 'Test',
+          submenu: [
+            {
+              label: 'Test Item',
+              accelerator: 'T',
+              click: (a, b, event) => {
+                hasBeenClicked = true
+              },
+              id: 'test'
+            }
+          ]
+        }
+      ])
+      Menu.setApplicationMenu(menu)
+      expect(Menu.getApplicationMenu()).to.not.be.null()
+      await sendRobotjsKey('t', 'shift')
+      expect(hasBeenClicked).to.equal(false)
     })
   })
 })

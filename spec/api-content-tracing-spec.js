@@ -15,10 +15,6 @@ const timeout = async (milliseconds) => {
   })
 }
 
-const getPathInATempFolder = (filename) => {
-  return path.join(app.getPath('temp'), filename)
-}
-
 describe('contentTracing', () => {
   beforeEach(function () {
     // FIXME: The tests are skipped on arm/arm64.
@@ -28,33 +24,17 @@ describe('contentTracing', () => {
     }
   })
 
-  const startRecording = async (options) => {
-    return new Promise((resolve) => {
-      contentTracing.startRecording(options, () => {
-        resolve()
-      })
-    })
-  }
-
-  const stopRecording = async (filePath) => {
-    return new Promise((resolve) => {
-      contentTracing.stopRecording(filePath, (resultFilePath) => {
-        resolve(resultFilePath)
-      })
-    })
-  }
-
   const record = async (options, outputFilePath, recordTimeInMilliseconds = 1e3) => {
     await app.whenReady()
 
-    await startRecording(options)
+    await contentTracing.startRecording(options)
     await timeout(recordTimeInMilliseconds)
-    const resultFilePath = await stopRecording(outputFilePath)
+    const resultFilePath = await contentTracing.stopRecording(outputFilePath)
 
     return resultFilePath
   }
 
-  const outputFilePath = getPathInATempFolder('trace.json')
+  const outputFilePath = path.join(app.getPath('temp'), 'trace.json')
   beforeEach(() => {
     if (fs.existsSync(outputFilePath)) {
       fs.unlinkSync(outputFilePath)
@@ -131,14 +111,30 @@ describe('contentTracing', () => {
   describe('stopRecording', function () {
     this.timeout(5e3)
 
+    it('does not crash on empty string', async () => {
+      const options = {
+        categoryFilter: '*',
+        traceOptions: 'record-until-full,enable-sampling'
+      }
+
+      await contentTracing.startRecording(options)
+      const path = await contentTracing.stopRecording('')
+      expect(path).to.be.a('string').that.is.not.empty()
+      expect(fs.statSync(path).isFile()).to.be.true()
+    })
+
     it('calls its callback with a result file path', async () => {
       const resultFilePath = await record(/* options */ {}, outputFilePath)
       expect(resultFilePath).to.be.a('string').and.be.equal(outputFilePath)
     })
 
-    // FIXME(alexeykuzmin): https://github.com/electron/electron/issues/16019
-    xit('creates a temporary file when an empty string is passed', async function () {
+    it('creates a temporary file when an empty string is passed', async function () {
       const resultFilePath = await record(/* options */ {}, /* outputFilePath */ '')
+      expect(resultFilePath).to.be.a('string').that.is.not.empty()
+    })
+
+    it('creates a temporary file when no path is passed', async function () {
+      const resultFilePath = await record(/* options */ {}, /* outputFilePath */ undefined)
       expect(resultFilePath).to.be.a('string').that.is.not.empty()
     })
   })

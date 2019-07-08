@@ -128,39 +128,35 @@ describe('powerMonitor', () => {
       powerMonitor = require('electron').remote.powerMonitor
     })
 
-    describe('powerMonitor.querySystemIdleState', () => {
-      it('notify current system idle state', done => {
+    describe('powerMonitor.getSystemIdleState', () => {
+      it('gets current system idle state', () => {
         // this function is not mocked out, so we can test the result's
         // form and type but not its value.
-        powerMonitor.querySystemIdleState(1, idleState => {
-          expect(idleState).to.be.a('string')
-          const validIdleStates = [ 'active', 'idle', 'locked', 'unknown' ]
-          expect(validIdleStates).to.include(idleState)
-          done()
-        })
+        const idleState = powerMonitor.getSystemIdleState(1)
+        expect(idleState).to.be.a('string')
+        const validIdleStates = [ 'active', 'idle', 'locked', 'unknown' ]
+        expect(validIdleStates).to.include(idleState)
       })
 
       it('does not accept non positive integer threshold', () => {
         expect(() => {
-          powerMonitor.querySystemIdleState(-1, (idleState) => {})
-        }).to.throw()
+          powerMonitor.getSystemIdleState(-1)
+        }).to.throw(/must be greater than 0/)
 
         expect(() => {
-          powerMonitor.querySystemIdleState(NaN, (idleState) => {})
-        }).to.throw()
+          powerMonitor.getSystemIdleState(NaN)
+        }).to.throw(/conversion failure/)
 
         expect(() => {
-          powerMonitor.querySystemIdleState('a', (idleState) => {})
-        }).to.throw()
+          powerMonitor.getSystemIdleState('a')
+        }).to.throw(/conversion failure/)
       })
     })
 
-    describe('powerMonitor.querySystemIdleTime', () => {
-      it('notify current system idle time', done => {
-        powerMonitor.querySystemIdleTime(idleTime => {
-          expect(idleTime).to.be.at.least(0)
-          done()
-        })
+    describe('powerMonitor.getSystemIdleTime', () => {
+      it('notify current system idle time', () => {
+        const idleTime = powerMonitor.getSystemIdleTime()
+        expect(idleTime).to.be.at.least(0)
       })
     })
   })

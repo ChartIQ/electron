@@ -6,7 +6,9 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const { ipcRenderer, remote } = require('electron')
-const features = process.atomBinding('features')
+const features = process.electronBinding('features')
+
+const { emittedOnce } = require('./events-helpers')
 
 const isCI = remote.getGlobal('isCi')
 chai.use(dirtyChai)
@@ -111,6 +113,18 @@ describe('node feature', () => {
         })
         forked.send('hello')
       })
+
+      it('has the electron version in process.versions', (done) => {
+        const source = 'process.send(process.versions)'
+        const forked = ChildProcess.fork('--eval', [source])
+        forked.on('message', (message) => {
+          expect(message)
+            .to.have.own.property('electron')
+            .that.is.a('string')
+            .and.matches(/^\d+\.\d+\.\d+(\S*)?$/)
+          done()
+        })
+      })
     })
 
     describe('child_process.spawn', () => {
@@ -198,6 +212,16 @@ describe('node feature', () => {
       })
     })
 
+    describe('setTimeout called under blink env in renderer process', () => {
+      it('can be scheduled in time', (done) => {
+        setTimeout(done, 10)
+      })
+
+      it('works from the timers module', (done) => {
+        require('timers').setTimeout(done, 10)
+      })
+    })
+
     describe('setInterval called under Chromium event loop in browser process', () => {
       it('can be scheduled in time', (done) => {
         let interval = null
@@ -215,10 +239,45 @@ describe('node feature', () => {
         interval = remote.getGlobal('setInterval')(clear, 10)
       })
     })
+
+    describe('setInterval called under blink env in renderer process', () => {
+      it('can be scheduled in time', (done) => {
+        let interval = null
+        let clearing = false
+        const clear = () => {
+          if (interval === null || clearing) return
+
+          // interval might trigger while clearing (remote is slow sometimes)
+          clearing = true
+          clearInterval(interval)
+          clearing = false
+          interval = null
+          done()
+        }
+        interval = setInterval(clear, 10)
+      })
+
+      it('can be scheduled in time from timers module', (done) => {
+        let interval = null
+        let clearing = false
+        const clear = () => {
+          if (interval === null || clearing) return
+
+          // interval might trigger while clearing (remote is slow sometimes)
+          clearing = true
+          require('timers').clearInterval(interval)
+          clearing = false
+          interval = null
+          done()
+        }
+        interval = require('timers').setInterval(clear, 10)
+      })
+    })
   })
 
   describe('inspector', () => {
     let child = null
+    let exitPromise = null
 
     beforeEach(function () {
       if (!features.isRunAsNodeEnabled()) {
@@ -226,8 +285,14 @@ describe('node feature', () => {
       }
     })
 
-    afterEach(() => {
-      if (child !== null) child.kill()
+    afterEach(async () => {
+      if (child && exitPromise) {
+        const [code, signal] = await exitPromise
+        expect(signal).to.equal(null)
+        expect(code).to.equal(0)
+      } else if (child) {
+        child.kill()
+      }
     })
 
     it('supports starting the v8 inspector with --inspect/--inspect-brk', (done) => {
@@ -257,8 +322,38 @@ describe('node feature', () => {
       child.stdout.on('data', outDataHandler)
     })
 
+    it('supports starting the v8 inspector with --inspect and a provided port', (done) => {
+      child = ChildProcess.spawn(process.execPath, ['--inspect=17364', path.join(__dirname, 'fixtures', 'module', 'run-as-node.js')], {
+        env: {
+          ELECTRON_RUN_AS_NODE: true
+        }
+      })
+      exitPromise = emittedOnce(child, 'exit')
+
+      let output = ''
+      function cleanup () {
+        child.stderr.removeListener('data', errorDataListener)
+        child.stdout.removeListener('data', outDataHandler)
+      }
+      function errorDataListener (data) {
+        output += data
+        if (output.trim().startsWith('Debugger listening on ws://')) {
+          expect(output.trim()).to.contain(':17364', 'should be listening on port 17364')
+          cleanup()
+          done()
+        }
+      }
+      function outDataHandler (data) {
+        cleanup()
+        done(new Error(`Unexpected output: ${data.toString()}`))
+      }
+      child.stderr.on('data', errorDataListener)
+      child.stdout.on('data', outDataHandler)
+    })
+
     it('does not start the v8 inspector when --inspect is after a -- argument', (done) => {
       child = ChildProcess.spawn(remote.process.execPath, [path.join(__dirname, 'fixtures', 'module', 'noop.js'), '--', '--inspect'])
+      exitPromise = emittedOnce(child, 'exit')
 
       let output = ''
       function dataListener (data) {
@@ -275,6 +370,35 @@ describe('node feature', () => {
       })
     })
 
+    it('does does not crash when quitting with the inspector connected', function (done) {
+      // IPC Electron child process not supported on Windows
+      if (process.platform === 'win32') return this.skip()
+      child = ChildProcess.spawn(remote.process.execPath, [path.join(__dirname, 'fixtures', 'module', 'delay-exit'), '--inspect=0'], {
+        stdio: ['ipc']
+      })
+      exitPromise = emittedOnce(child, 'exit')
+
+      let output = ''
+      function dataListener (data) {
+        output += data
+
+        if (output.trim().indexOf('Debugger listening on ws://') > -1 && output.indexOf('\n') > -1) {
+          const socketMatch = output.trim().match(/(ws:\/\/.+:[0-9]+\/.+?)\n/gm)
+          if (socketMatch && socketMatch[0]) {
+            child.stderr.removeListener('data', dataListener)
+            child.stdout.removeListener('data', dataListener)
+            const connection = new WebSocket(socketMatch[0])
+            connection.onopen = () => {
+              child.send('plz-quit')
+              done()
+            }
+          }
+        }
+      }
+      child.stderr.on('data', dataListener)
+      child.stdout.on('data', dataListener)
+    })
+
     it('supports js binding', (done) => {
       child = ChildProcess.spawn(process.execPath, ['--inspect', path.join(__dirname, 'fixtures', 'module', 'inspector-binding.js')], {
         env: {
@@ -282,6 +406,7 @@ describe('node feature', () => {
         },
         stdio: ['ipc']
       })
+      exitPromise = emittedOnce(child, 'exit')
 
       child.on('message', ({ cmd, debuggerEnabled, success }) => {
         if (cmd === 'assert') {
@@ -428,6 +553,62 @@ describe('node feature', () => {
     })
   })
 
+  describe('crypto', () => {
+    it('should list the ripemd160 hash in getHashes', () => {
+      expect(require('crypto').getHashes()).to.include('ripemd160')
+    })
+
+    it('should be able to create a ripemd160 hash and use it', () => {
+      const hash = require('crypto').createHash('ripemd160')
+      hash.update('electron-ripemd160')
+      expect(hash.digest('hex')).to.equal('fa7fec13c624009ab126ebb99eda6525583395fe')
+    })
+
+    it('should list aes-{128,256}-cfb in getCiphers', () => {
+      expect(require('crypto').getCiphers()).to.include.members(['aes-128-cfb', 'aes-256-cfb'])
+    })
+
+    it('should be able to create an aes-128-cfb cipher', () => {
+      require('crypto').createCipheriv('aes-128-cfb', '0123456789abcdef', '0123456789abcdef')
+    })
+
+    it('should be able to create an aes-256-cfb cipher', () => {
+      require('crypto').createCipheriv('aes-256-cfb', '0123456789abcdef0123456789abcdef', '0123456789abcdef')
+    })
+
+    it('should list des-ede-cbc in getCiphers', () => {
+      expect(require('crypto').getCiphers()).to.include('des-ede-cbc')
+    })
+
+    it('should be able to create an des-ede-cbc cipher', () => {
+      const key = Buffer.from('0123456789abcdeff1e0d3c2b5a49786', 'hex')
+      const iv = Buffer.from('fedcba9876543210', 'hex')
+      require('crypto').createCipheriv('des-ede-cbc', key, iv)
+    })
+
+    it('should not crash when getting an ECDH key', () => {
+      const ecdh = require('crypto').createECDH('prime256v1')
+      expect(ecdh.generateKeys()).to.be.an.instanceof(Buffer)
+      expect(ecdh.getPrivateKey()).to.be.an.instanceof(Buffer)
+    })
+
+    it('should not crash when generating DH keys or fetching DH fields', () => {
+      const dh = require('crypto').createDiffieHellman('modp15')
+      expect(dh.generateKeys()).to.be.an.instanceof(Buffer)
+      expect(dh.getPublicKey()).to.be.an.instanceof(Buffer)
+      expect(dh.getPrivateKey()).to.be.an.instanceof(Buffer)
+      expect(dh.getPrime()).to.be.an.instanceof(Buffer)
+      expect(dh.getGenerator()).to.be.an.instanceof(Buffer)
+    })
+
+    it('should not crash when creating an ECDH cipher', () => {
+      const crypto = require('crypto')
+      const dh = crypto.createECDH('prime256v1')
+      dh.generateKeys()
+      dh.setPrivateKey(dh.getPrivateKey())
+    })
+  })
+
   it('includes the electron version in process.versions', () => {
     expect(process.versions)
       .to.have.own.property('electron')
@@ -440,5 +621,10 @@ describe('node feature', () => {
       .to.have.own.property('chrome')
       .that.is.a('string')
       .and.matches(/^\d+\.\d+\.\d+\.\d+$/)
+  })
+
+  it('can find a module using a package.json main field', () => {
+    const result = ChildProcess.spawnSync(remote.process.execPath, [path.resolve(fixtures, 'api', 'electron-main-module', 'app.asar')])
+    expect(result.status).to.equal(0)
   })
 })
