@@ -86,7 +86,7 @@
     "tsc": "tsc",
     "webpack": "node build/webpack/run-compiler"
   },
-  "license": "MIT",
+  "license": "apache-2.0",
   "author": "Electron Community",
   "keywords": [
     "electron"
