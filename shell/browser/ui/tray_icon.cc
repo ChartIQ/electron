@@ -6,20 +6,24 @@
 
 namespace electron {
 
-TrayIcon::TrayIcon() {}
+TrayIcon::BalloonOptions::BalloonOptions() = default;
 
-TrayIcon::~TrayIcon() {}
+TrayIcon::TrayIcon() = default;
+
+TrayIcon::~TrayIcon() = default;
 
 void TrayIcon::SetPressedImage(ImageType image) {}
 
-void TrayIcon::SetHighlightMode(TrayIcon::HighlightMode mode) {}
+void TrayIcon::DisplayBalloon(const BalloonOptions& options) {}
 
-void TrayIcon::DisplayBalloon(ImageType icon,
-                              const base::string16& title,
-                              const base::string16& contents) {}
+void TrayIcon::RemoveBalloon() {}
+
+void TrayIcon::Focus() {}
 
 void TrayIcon::PopUpContextMenu(const gfx::Point& pos,
-                                AtomMenuModel* menu_model) {}
+                                ElectronMenuModel* menu_model) {}
+
+void TrayIcon::CloseContextMenu() {}
 
 gfx::Rect TrayIcon::GetBounds() {
   return gfx::Rect();
@@ -70,6 +74,16 @@ void TrayIcon::NotifyDropFiles(const std::vector<std::string>& files) {
 void TrayIcon::NotifyDropText(const std::string& text) {
   for (TrayIconObserver& observer : observers_)
     observer.OnDropText(text);
+}
+
+void TrayIcon::NotifyMouseUp(const gfx::Point& location, int modifiers) {
+  for (TrayIconObserver& observer : observers_)
+    observer.OnMouseUp(location, modifiers);
+}
+
+void TrayIcon::NotifyMouseDown(const gfx::Point& location, int modifiers) {
+  for (TrayIconObserver& observer : observers_)
+    observer.OnMouseDown(location, modifiers);
 }
 
 void TrayIcon::NotifyMouseEntered(const gfx::Point& location, int modifiers) {

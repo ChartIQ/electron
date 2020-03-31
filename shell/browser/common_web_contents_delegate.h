@@ -18,17 +18,13 @@
 #include "shell/browser/ui/inspectable_web_contents_impl.h"
 #include "shell/browser/ui/inspectable_web_contents_view_delegate.h"
 
-#if defined(TOOLKIT_VIEWS)
-#include "shell/browser/ui/autofill_popup.h"
-#endif
-
 namespace base {
 class SequencedTaskRunner;
 }
 
 namespace electron {
 
-class AtomBrowserContext;
+class ElectronBrowserContext;
 class NativeWindow;
 class WebDialogHelper;
 
@@ -46,7 +42,7 @@ class CommonWebContentsDelegate : public content::WebContentsDelegate,
   // Creates a InspectableWebContents object and takes onwership of
   // |web_contents|.
   void InitWithWebContents(content::WebContents* web_contents,
-                           AtomBrowserContext* browser_context,
+                           ElectronBrowserContext* browser_context,
                            bool is_guest);
 
   // Set the window as owner window.
@@ -96,25 +92,21 @@ class CommonWebContentsDelegate : public content::WebContentsDelegate,
   void EnterFullscreenModeForTab(
       content::WebContents* source,
       const GURL& origin,
-      const blink::WebFullscreenOptions& options) override;
+      const blink::mojom::FullscreenOptions& options) override;
   void ExitFullscreenModeForTab(content::WebContents* source) override;
   bool IsFullscreenForTabOrPending(const content::WebContents* source) override;
-  blink::WebSecurityStyle GetSecurityStyle(
+  blink::SecurityStyle GetSecurityStyle(
       content::WebContents* web_contents,
       content::SecurityStyleExplanations* explanations) override;
   bool TakeFocus(content::WebContents* source, bool reverse) override;
   bool HandleKeyboardEvent(
       content::WebContents* source,
       const content::NativeWebKeyboardEvent& event) override;
-
-  // Autofill related events.
-  void ShowAutofillPopup(content::RenderFrameHost* frame_host,
-                         content::RenderFrameHost* embedder_frame_host,
-                         bool offscreen,
-                         const gfx::RectF& bounds,
-                         const std::vector<base::string16>& values,
-                         const std::vector<base::string16>& labels);
-  void HideAutofillPopup();
+  content::PictureInPictureResult EnterPictureInPicture(
+      content::WebContents* web_contents,
+      const viz::SurfaceId&,
+      const gfx::Size& natural_size) override;
+  void ExitPictureInPicture() override;
 
   // InspectableWebContentsDelegate:
   void DevToolsSaveToFile(const std::string& url,
@@ -176,15 +168,12 @@ class CommonWebContentsDelegate : public content::WebContentsDelegate,
   bool native_fullscreen_ = false;
 
   // UI related helper classes.
-#if defined(TOOLKIT_VIEWS)
-  std::unique_ptr<AutofillPopup> autofill_popup_;
-#endif
   std::unique_ptr<WebDialogHelper> web_dialog_helper_;
 
   scoped_refptr<DevToolsFileSystemIndexer> devtools_file_system_indexer_;
 
   // Make sure BrowserContext is alwasys destroyed after WebContents.
-  scoped_refptr<AtomBrowserContext> browser_context_;
+  scoped_refptr<ElectronBrowserContext> browser_context_;
 
   // The stored InspectableWebContents object.
   // Notice that web_contents_ must be placed after dialog_manager_, so we can

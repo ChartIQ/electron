@@ -4,6 +4,9 @@
 
 #include "shell/browser/ui/win/notify_icon.h"
 
+#include <objbase.h>
+#include <utility>
+
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/windows_version.h"
@@ -17,14 +20,42 @@
 #include "ui/views/controls/menu/menu_runner.h"
 #include "ui/views/widget/widget.h"
 
+namespace {
+
+UINT ConvertIconType(electron::TrayIcon::IconType type) {
+  using IconType = electron::TrayIcon::IconType;
+  switch (type) {
+    case IconType::None:
+      return NIIF_NONE;
+    case IconType::Info:
+      return NIIF_INFO;
+    case IconType::Warning:
+      return NIIF_WARNING;
+    case IconType::Error:
+      return NIIF_ERROR;
+    case IconType::Custom:
+      return NIIF_USER;
+    default:
+      NOTREACHED() << "Invalid icon type";
+  }
+}
+
+}  // namespace
+
 namespace electron {
 
-NotifyIcon::NotifyIcon(NotifyIconHost* host, UINT id, HWND window, UINT message)
+NotifyIcon::NotifyIcon(NotifyIconHost* host,
+                       UINT id,
+                       HWND window,
+                       UINT message,
+                       GUID guid)
     : host_(host),
       icon_id_(id),
       window_(window),
       message_id_(message),
       weak_factory_(this) {
+  guid_ = guid;
+  is_using_guid_ = guid != GUID_DEFAULT;
   NOTIFYICONDATA icon_data;
   InitIconData(&icon_data);
   icon_data.uFlags |= NIF_MESSAGE;
@@ -63,6 +94,13 @@ void NotifyIcon::HandleClickEvent(int modifiers,
     else
       NotifyRightClicked(bounds, modifiers);
   }
+}
+
+void NotifyIcon::HandleMouseMoveEvent(int modifiers) {
+  gfx::Point cursorPos = display::Screen::GetScreen()->GetCursorScreenPoint();
+  // Omit event fired when tray icon is created but cursor is outside of it.
+  if (GetBounds().Contains(cursorPos))
+    NotifyMouseMoved(cursorPos, modifiers);
 }
 
 void NotifyIcon::ResetIcon() {
@@ -113,26 +151,51 @@ void NotifyIcon::SetToolTip(const std::string& tool_tip) {
     LOG(WARNING) << "Unable to set tooltip for status tray icon";
 }
 
-void NotifyIcon::DisplayBalloon(HICON icon,
-                                const base::string16& title,
-                                const base::string16& contents) {
+void NotifyIcon::DisplayBalloon(const BalloonOptions& options) {
   NOTIFYICONDATA icon_data;
   InitIconData(&icon_data);
   icon_data.uFlags |= NIF_INFO;
-  icon_data.dwInfoFlags = NIIF_INFO;
-  wcsncpy_s(icon_data.szInfoTitle, title.c_str(), _TRUNCATE);
-  wcsncpy_s(icon_data.szInfo, contents.c_str(), _TRUNCATE);
+  wcsncpy_s(icon_data.szInfoTitle, options.title.c_str(), _TRUNCATE);
+  wcsncpy_s(icon_data.szInfo, options.content.c_str(), _TRUNCATE);
   icon_data.uTimeout = 0;
-  icon_data.hBalloonIcon = icon;
-  icon_data.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON;
+  icon_data.hBalloonIcon = options.icon;
+  icon_data.dwInfoFlags = ConvertIconType(options.icon_type);
+
+  if (options.large_icon)
+    icon_data.dwInfoFlags |= NIIF_LARGE_ICON;
+
+  if (options.no_sound)
+    icon_data.dwInfoFlags |= NIIF_NOSOUND;
+
+  if (options.respect_quiet_time)
+    icon_data.dwInfoFlags |= NIIF_RESPECT_QUIET_TIME;
 
   BOOL result = Shell_NotifyIcon(NIM_MODIFY, &icon_data);
   if (!result)
     LOG(WARNING) << "Unable to create status tray balloon.";
 }
 
+void NotifyIcon::RemoveBalloon() {
+  NOTIFYICONDATA icon_data;
+  InitIconData(&icon_data);
+  icon_data.uFlags |= NIF_INFO;
+
+  BOOL result = Shell_NotifyIcon(NIM_MODIFY, &icon_data);
+  if (!result)
+    LOG(WARNING) << "Unable to remove status tray balloon.";
+}
+
+void NotifyIcon::Focus() {
+  NOTIFYICONDATA icon_data;
+  InitIconData(&icon_data);
+
+  BOOL result = Shell_NotifyIcon(NIM_SETFOCUS, &icon_data);
+  if (!result)
+    LOG(WARNING) << "Unable to focus tray icon.";
+}
+
 void NotifyIcon::PopUpContextMenu(const gfx::Point& pos,
-                                  AtomMenuModel* menu_model) {
+                                  ElectronMenuModel* menu_model) {
   // Returns if context menu isn't set.
   if (menu_model == nullptr && menu_model_ == nullptr)
     return;
@@ -143,8 +206,7 @@ void NotifyIcon::PopUpContextMenu(const gfx::Point& pos,
     return;
 
   // Cancel current menu if there is one.
-  if (menu_runner_ && menu_runner_->IsRunning())
-    menu_runner_->Cancel();
+  CloseContextMenu();
 
   // Show menu at mouse's position by default.
   gfx::Rect rect(pos, gfx::Size());
@@ -159,8 +221,9 @@ void NotifyIcon::PopUpContextMenu(const gfx::Point& pos,
       views::Widget::InitParams::Ownership::WIDGET_OWNS_NATIVE_WIDGET;
   params.bounds = gfx::Rect(0, 0, 0, 0);
   params.force_software_compositing = true;
+  params.z_order = ui::ZOrderLevel::kFloatingUIElement;
 
-  widget_->Init(params);
+  widget_->Init(std::move(params));
 
   widget_->Show();
   widget_->Activate();
@@ -174,7 +237,13 @@ void NotifyIcon::PopUpContextMenu(const gfx::Point& pos,
                           ui::MENU_SOURCE_MOUSE);
 }
 
-void NotifyIcon::SetContextMenu(AtomMenuModel* menu_model) {
+void NotifyIcon::CloseContextMenu() {
+  if (menu_runner_ && menu_runner_->IsRunning()) {
+    menu_runner_->Cancel();
+  }
+}
+
+void NotifyIcon::SetContextMenu(ElectronMenuModel* menu_model) {
   menu_model_ = menu_model;
 }
 
@@ -184,6 +253,9 @@ gfx::Rect NotifyIcon::GetBounds() {
   icon_id.uID = icon_id_;
   icon_id.hWnd = window_;
   icon_id.cbSize = sizeof(NOTIFYICONIDENTIFIER);
+  if (is_using_guid_) {
+    icon_id.guidItem = guid_;
+  }
 
   RECT rect = {0};
   Shell_NotifyIconGetRect(&icon_id, &rect);
@@ -195,6 +267,10 @@ void NotifyIcon::InitIconData(NOTIFYICONDATA* icon_data) {
   icon_data->cbSize = sizeof(NOTIFYICONDATA);
   icon_data->hWnd = window_;
   icon_data->uID = icon_id_;
+  if (is_using_guid_) {
+    icon_data->uFlags = NIF_GUID;
+    icon_data->guidItem = guid_;
+  }
 }
 
 void NotifyIcon::OnContextMenuClosed() {

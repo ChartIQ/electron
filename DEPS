@@ -5,16 +5,18 @@ gclient_gn_args = [
   'checkout_android_native_support',
   'checkout_libaom',
   'checkout_nacl',
-  'checkout_oculus_sdk'
+  'checkout_oculus_sdk',
+  'checkout_openxr',
+  'checkout_google_benchmark'
 ]
 
 vars = {
   'chromium_version':
-    '37cd06a295cf156cb7658ec5382f5623a05841c6',
+    'f3d154dbc31bd902e8eecfd48fd85d01d0eea0f2',
   'node_version':
-    '780436005ffc7f317abfba48b236428858284e99',
+    'v12.16.1',
   'nan_version':
-    '2ee313aaca52e2b478965ac50eb5082520380d1b',
+    '2c4ee8a32a299eada3cd6e468bbd0a473bfea96d',
 
   'boto_version': 'f7574aa6cc2c819430c1f05e9a1a1a666ef8169b',
   'pyyaml_version': '3.12',
@@ -60,11 +62,15 @@ vars = {
     True,
   'checkout_oculus_sdk':
     False,
+  'checkout_openxr':
+    False,
   'build_with_chromium':
     True,
   'checkout_android':
     False,
   'checkout_android_native_support':
+    False,
+  'checkout_google_benchmark':
     False,
 }
 
@@ -78,7 +84,7 @@ deps = {
     'condition': 'checkout_nan and process_deps',
   },
   'src/third_party/electron_node': {
-    'url': (Var("electron_git")) + '/node.git@' + (Var("node_version")),
+    'url': (Var("nodejs_git")) + '/node.git@' + (Var("node_version")),
     'condition': 'checkout_node and process_deps',
   },
   'src/electron/vendor/pyyaml': {
@@ -111,7 +117,7 @@ hooks = [
     'pattern': 'src/electron/script/update-external-binaries.py',
     'condition': 'download_external_binaries',
     'action': [
-      'python',
+      'python3',
       'src/electron/script/update-external-binaries.py',
     ],
   },

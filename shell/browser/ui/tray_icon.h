@@ -9,15 +9,16 @@
 #include <vector>
 
 #include "base/observer_list.h"
-#include "shell/browser/ui/atom_menu_model.h"
+#include "shell/browser/ui/electron_menu_model.h"
 #include "shell/browser/ui/tray_icon_observer.h"
+#include "shell/common/gin_converters/guid_converter.h"
 #include "ui/gfx/geometry/rect.h"
 
 namespace electron {
 
 class TrayIcon {
  public:
-  static TrayIcon* Create();
+  static TrayIcon* Create(base::Optional<UUID> guid);
 
 #if defined(OS_WIN)
   using ImageType = HICON;
@@ -39,14 +40,6 @@ class TrayIcon {
   // status icon (e.g. Ubuntu Unity).
   virtual void SetToolTip(const std::string& tool_tip) = 0;
 
-  // Sets the status icon highlight mode. This only works on macOS.
-  enum class HighlightMode {
-    ALWAYS,    // Always highlight the tray icon
-    NEVER,     // Never highlight the tray icon
-    SELECTION  // Highlight the tray icon when clicked or the menu is opened
-  };
-  virtual void SetHighlightMode(HighlightMode mode);
-
 #if defined(OS_MACOSX)
   // Set/Get flag determining whether to ignore double click events.
   virtual void SetIgnoreDoubleClickEvents(bool ignore) = 0;
@@ -57,18 +50,42 @@ class TrayIcon {
   virtual std::string GetTitle() = 0;
 #endif
 
+  enum class IconType { None, Info, Warning, Error, Custom };
+
+  struct BalloonOptions {
+    IconType icon_type = IconType::Custom;
+#if defined(OS_WIN)
+    HICON icon = nullptr;
+#else
+    gfx::Image icon;
+#endif
+    base::string16 title;
+    base::string16 content;
+    bool large_icon = true;
+    bool no_sound = false;
+    bool respect_quiet_time = false;
+
+    BalloonOptions();
+  };
+
   // Displays a notification balloon with the specified contents.
   // Depending on the platform it might not appear by the icon tray.
-  virtual void DisplayBalloon(ImageType icon,
-                              const base::string16& title,
-                              const base::string16& contents);
+  virtual void DisplayBalloon(const BalloonOptions& options);
+
+  // Removes the notification balloon.
+  virtual void RemoveBalloon();
+
+  // Returns focus to the taskbar notification area.
+  virtual void Focus();
 
   // Popups the menu.
   virtual void PopUpContextMenu(const gfx::Point& pos,
-                                AtomMenuModel* menu_model);
+                                ElectronMenuModel* menu_model);
+
+  virtual void CloseContextMenu();
 
   // Set the context menu for this icon.
-  virtual void SetContextMenu(AtomMenuModel* menu_model) = 0;
+  virtual void SetContextMenu(ElectronMenuModel* menu_model) = 0;
 
   // Returns the bounds of tray icon.
   virtual gfx::Rect GetBounds();
@@ -91,6 +108,10 @@ class TrayIcon {
   void NotifyDragEntered();
   void NotifyDragExited();
   void NotifyDragEnded();
+  void NotifyMouseUp(const gfx::Point& location = gfx::Point(),
+                     int modifiers = 0);
+  void NotifyMouseDown(const gfx::Point& location = gfx::Point(),
+                       int modifiers = 0);
   void NotifyMouseEntered(const gfx::Point& location = gfx::Point(),
                           int modifiers = 0);
   void NotifyMouseExited(const gfx::Point& location = gfx::Point(),

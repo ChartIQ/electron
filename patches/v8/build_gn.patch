@@ -3,13 +3,17 @@ From: Jeremy Apthorp <nornagon@nornagon.net>
 Date: Tue, 16 Apr 2019 10:43:04 -0700
 Subject: build_gn.patch
 
+We force V8 into 'shared library' mode so that it exports its symbols, which is
+necessary for native modules to load.
+
+Also, some fixes relating to mksnapshot on ARM.
 
 diff --git a/BUILD.gn b/BUILD.gn
-index 6a5dff6d2281b38a444878ef6b11d9d4bfe49d08..7f5730e3069626a9078a5faf15385bf18519fe12 100644
+index 6c1088d932f3bc6eedec49a329120275a4fd8a2d..a04cd604ab7b7c300f7d7b4a7034d03397f3728f 100644
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -271,7 +271,7 @@ config("internal_config") {
-     ":v8_header_features",
+@@ -311,7 +311,7 @@ config("internal_config") {
+     ":v8_tracing_config",
    ]
  
 -  if (is_component_build) {
@@ -17,7 +21,7 @@ index 6a5dff6d2281b38a444878ef6b11d9d4bfe49d08..7f5730e3069626a9078a5faf15385bf1
      defines += [ "BUILDING_V8_SHARED" ]
    }
  }
-@@ -3788,7 +3788,7 @@ if (current_toolchain == v8_generator_toolchain) {
+@@ -3971,7 +3971,7 @@ if (current_toolchain == v8_generator_toolchain) {
        "src/interpreter/bytecodes.h",
      ]
  
@@ -26,7 +30,7 @@ index 6a5dff6d2281b38a444878ef6b11d9d4bfe49d08..7f5730e3069626a9078a5faf15385bf1
  
      deps = [
        ":v8_libbase",
-@@ -3820,6 +3820,8 @@ if (v8_use_snapshot && current_toolchain == v8_snapshot_toolchain) {
+@@ -4004,6 +4004,8 @@ if (current_toolchain == v8_snapshot_toolchain) {
  
      configs = [ ":internal_config" ]
  

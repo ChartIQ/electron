@@ -4,6 +4,8 @@
 
 #include "shell/browser/browser_process_impl.h"
 
+#include <memory>
+
 #include <utility>
 
 #include "chrome/common/chrome_switches.h"
@@ -15,13 +17,13 @@
 #include "components/proxy_config/pref_proxy_config_tracker_impl.h"
 #include "components/proxy_config/proxy_config_dictionary.h"
 #include "components/proxy_config/proxy_config_pref_names.h"
+#include "content/public/browser/child_process_security_policy.h"
 #include "content/public/common/content_switches.h"
+#include "extensions/common/constants.h"
 #include "net/proxy_resolution/proxy_config.h"
 #include "net/proxy_resolution/proxy_config_service.h"
 #include "net/proxy_resolution/proxy_config_with_annotation.h"
-#include "net/proxy_resolution/proxy_resolution_service.h"
 #include "services/network/public/cpp/network_switches.h"
-#include "ui/base/l10n/l10n_util.h"
 
 #if BUILDFLAG(ENABLE_PRINTING)
 #include "chrome/browser/printing/print_job_manager.h"
@@ -74,6 +76,11 @@ void BrowserProcessImpl::ApplyProxyModeFromCommandLine(
   }
 }
 
+BuildState* BrowserProcessImpl::GetBuildState() {
+  NOTIMPLEMENTED();
+  return nullptr;
+}
+
 void BrowserProcessImpl::PostEarlyInitialization() {
   // Mock user prefs, as we only need to track changes for a
   // in memory pref store. There are no persistent preferences
@@ -88,19 +95,15 @@ void BrowserProcessImpl::PostEarlyInitialization() {
 }
 
 void BrowserProcessImpl::PreCreateThreads() {
+  // chrome-extension:// URLs are safe to request anywhere, but may only
+  // commit (including in iframes) in extension processes.
+  content::ChildProcessSecurityPolicy::GetInstance()
+      ->RegisterWebSafeIsolatedScheme(extensions::kExtensionScheme, true);
   // Must be created before the IOThread.
   // Once IOThread class is no longer needed,
   // this can be created on first use.
   if (!SystemNetworkContextManager::GetInstance())
     SystemNetworkContextManager::CreateInstance(local_state_.get());
-
-  // Manage global state of net and other IO thread related.
-  io_thread_ =
-      std::make_unique<IOThread>(SystemNetworkContextManager::GetInstance());
-}
-
-void BrowserProcessImpl::PostDestroyThreads() {
-  io_thread_.reset();
 }
 
 void BrowserProcessImpl::PostMainMessageLoopRun() {
@@ -249,11 +252,6 @@ BrowserProcessImpl::component_updater() {
   return nullptr;
 }
 
-component_updater::SupervisedUserWhitelistInstaller*
-BrowserProcessImpl::supervised_user_whitelist_installer() {
-  return nullptr;
-}
-
 MediaFileSystemRegistry* BrowserProcessImpl::media_file_system_registry() {
   return nullptr;
 }
@@ -279,16 +277,6 @@ resource_coordinator::TabManager* BrowserProcessImpl::GetTabManager() {
   return nullptr;
 }
 
-shell_integration::DefaultWebClientState
-BrowserProcessImpl::CachedDefaultWebClientState() {
-  return shell_integration::UNKNOWN_DEFAULT;
-}
-
-prefs::InProcessPrefServiceFactory* BrowserProcessImpl::pref_service_factory()
-    const {
-  return nullptr;
-}
-
 void BrowserProcessImpl::SetApplicationLocale(const std::string& locale) {
   locale_ = locale;
 }
@@ -300,7 +288,7 @@ const std::string& BrowserProcessImpl::GetApplicationLocale() {
 printing::PrintJobManager* BrowserProcessImpl::print_job_manager() {
 #if BUILDFLAG(ENABLE_PRINTING)
   if (!print_job_manager_)
-    print_job_manager_.reset(new printing::PrintJobManager());
+    print_job_manager_ = std::make_unique<printing::PrintJobManager>();
   return print_job_manager_.get();
 #else
   return nullptr;

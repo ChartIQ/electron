@@ -2,15 +2,28 @@ declare var internalBinding: any;
 
 declare namespace NodeJS {
   interface FeaturesBinding {
+    isBuiltinSpellCheckerEnabled(): boolean;
     isDesktopCapturerEnabled(): boolean;
     isOffscreenRenderingEnabled(): boolean;
+    isRemoteModuleEnabled(): boolean;
     isPDFViewerEnabled(): boolean;
     isRunAsNodeEnabled(): boolean;
     isFakeLocationProviderEnabled(): boolean;
     isViewApiEnabled(): boolean;
     isTtsEnabled(): boolean;
     isPrintingEnabled(): boolean;
+    isPictureInPictureEnabled(): boolean;
+    isExtensionsEnabled(): boolean;
     isComponentBuild(): boolean;
+  }
+
+  interface IpcRendererBinding {
+    send(internal: boolean, channel: string, args: any[]): void;
+    sendSync(internal: boolean, channel: string, args: any[]): any;
+    sendToHost(channel: string, args: any[]): void;
+    sendTo(internal: boolean, sendToAll: boolean, webContentsId: number, channel: string, args: any[]): void;
+    invoke<T>(internal: boolean, channel: string, args: any[]): Promise<{ error: string, result: T }>;
+    postMessage(channel: string, message: any, transferables: MessagePort[]): void;
   }
 
   interface V8UtilBinding {
@@ -18,6 +31,9 @@ declare namespace NodeJS {
     setHiddenValue<T>(obj: any, key: string, value: T): void;
     deleteHiddenValue(obj: any, key: string): void;
     requestGarbageCollectionForTesting(): void;
+    createIDWeakMap<V>(): ElectronInternal.KeyWeakMap<number, V>;
+    createDoubleIDWeakMap<V>(): ElectronInternal.KeyWeakMap<[string, number], V>;
+    setRemoteCallbackFreer(fn: Function, frameId: number, contextId: String, id: number, sender: any): void
   }
 
   interface Process {
@@ -27,6 +43,7 @@ declare namespace NodeJS {
     _linkedBinding(name: string): any;
     electronBinding(name: string): any;
     electronBinding(name: 'features'): FeaturesBinding;
+    electronBinding(name: 'ipc'): { ipc: IpcRendererBinding };
     electronBinding(name: 'v8_util'): V8UtilBinding;
     electronBinding(name: 'app'): { app: Electron.App, App: Function };
     electronBinding(name: 'command_line'): Electron.CommandLine;
@@ -40,6 +57,9 @@ declare namespace NodeJS {
 
     // Additional properties
     _firstFileName?: string;
+
+    helperExecPath: string;
+    isRemoteModuleEnabled: boolean;
   }
 }
 
@@ -52,11 +72,20 @@ declare module NodeJS  {
   }
 }
 
+interface ContextMenuItem {
+  id: number;
+  label: string;
+  type: 'normal' | 'separator' | 'subMenu' | 'checkbox';
+  checked: boolean;
+  enabled: boolean;
+  subItems: ContextMenuItem[];
+}
+
 declare interface Window {
   ELECTRON_DISABLE_SECURITY_WARNINGS?: boolean;
   ELECTRON_ENABLE_SECURITY_WARNINGS?: boolean;
   InspectorFrontendHost?: {
-    showContextMenuAtPoint: (x: number, y: number, items: any[]) => void
+    showContextMenuAtPoint: (x: number, y: number, items: ContextMenuItem[]) => void
   };
   DevToolsAPI?: {
     contextMenuItemSelected: (id: number) => void;

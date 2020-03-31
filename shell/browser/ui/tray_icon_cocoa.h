@@ -12,12 +12,12 @@
 #include "base/mac/scoped_nsobject.h"
 #include "shell/browser/ui/tray_icon.h"
 
-@class AtomMenuController;
+@class ElectronMenuController;
 @class StatusItemView;
 
 namespace electron {
 
-class TrayIconCocoa : public TrayIcon, public AtomMenuModel::Observer {
+class TrayIconCocoa : public TrayIcon {
  public:
   TrayIconCocoa();
   ~TrayIconCocoa() override;
@@ -27,28 +27,21 @@ class TrayIconCocoa : public TrayIcon, public AtomMenuModel::Observer {
   void SetToolTip(const std::string& tool_tip) override;
   void SetTitle(const std::string& title) override;
   std::string GetTitle() override;
-  void SetHighlightMode(TrayIcon::HighlightMode mode) override;
   void SetIgnoreDoubleClickEvents(bool ignore) override;
   bool GetIgnoreDoubleClickEvents() override;
-  void PopUpOnUI(AtomMenuModel* menu_model);
+  void PopUpOnUI(ElectronMenuModel* menu_model);
   void PopUpContextMenu(const gfx::Point& pos,
-                        AtomMenuModel* menu_model) override;
-  void SetContextMenu(AtomMenuModel* menu_model) override;
+                        ElectronMenuModel* menu_model) override;
+  void CloseContextMenu() override;
+  void SetContextMenu(ElectronMenuModel* menu_model) override;
   gfx::Rect GetBounds() override;
 
- protected:
-  // AtomMenuModel::Observer:
-  void OnMenuWillClose() override;
-
  private:
-  // Atom custom view for NSStatusItem.
+  // Electron custom view for NSStatusItem.
   base::scoped_nsobject<StatusItemView> status_item_view_;
 
   // Status menu shown when right-clicking the system icon.
-  base::scoped_nsobject<AtomMenuController> menu_;
-
-  // Used for unregistering observer.
-  AtomMenuModel* menu_model_ = nullptr;  // weak ref.
+  base::scoped_nsobject<ElectronMenuController> menu_;
 
   base::WeakPtrFactory<TrayIconCocoa> weak_factory_;
 

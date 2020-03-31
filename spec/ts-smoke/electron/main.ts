@@ -54,7 +54,7 @@ if (!gotLock) {
 
 // This method will be called when Electron has done everything
 // initialization and ready for creating browser windows.
-app.on('ready', () => {
+app.whenReady().then(() => {
   // Create the browser window.
   mainWindow = new BrowserWindow({ width: 800, height: 600 })
 
@@ -81,7 +81,6 @@ app.on('ready', () => {
   })
 
   mainWindow.webContents.setVisualZoomLevelLimits(50, 200)
-  mainWindow.webContents.setLayoutZoomLevelLimits(50, 200)
 
   mainWindow.webContents.print({ silent: true, printBackground: false })
   mainWindow.webContents.print()
@@ -129,7 +128,7 @@ app.on('ready', () => {
     console.log('Debugger detached due to : ', reason)
   })
 
-  mainWindow.webContents.debugger.on('message', function (event, method, params) {
+  mainWindow.webContents.debugger.on('message', function (event, method, params: any) {
     if (method === 'Network.requestWillBeSent') {
       if (params.request.url === 'https://www.github.com') {
         mainWindow.webContents.debugger.detach()
@@ -148,7 +147,7 @@ app.on('ready', () => {
 
 app.commandLine.appendSwitch('enable-web-bluetooth')
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
     event.preventDefault()
 
@@ -318,23 +317,12 @@ app.setAboutPanelOptions({
   version: '1.2.3'
 })
 
-let window = new BrowserWindow()
-window.setProgressBar(0.5)
-window.setRepresentedFilename('/etc/passwd')
-window.setDocumentEdited(true)
-window.previewFile('/path/to/file')
-window.previewFile('/path/to/file', 'Displayed Name')
-window.setVibrancy('menu')
-window.setVibrancy('titlebar')
-window.setVibrancy('selection')
-window.setVibrancy('popover')
-
 // Online/Offline Event Detection
 // https://github.com/atom/electron/blob/master/docs/tutorial/online-offline-events.md
 
 let onlineStatusWindow: Electron.BrowserWindow
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   onlineStatusWindow = new BrowserWindow({ width: 0, height: 0, show: false, vibrancy: 'sidebar' })
   onlineStatusWindow.loadURL(`file://${__dirname}/online-status.html`)
 })
@@ -347,7 +335,7 @@ ipcMain.on('online-status-changed', (event: any, status: any) => {
 // Synopsis
 // https://github.com/atom/electron/blob/master/docs/api/synopsis.md
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   window = new BrowserWindow({
     width: 800,
     height: 600,
@@ -356,8 +344,8 @@ app.on('ready', () => {
   window.loadURL('https://github.com')
 })
 
-// Supported Chrome command line switches
-// https://github.com/atom/electron/blob/master/docs/api/chrome-command-line-switches.md
+// Supported command line switches
+// https://github.com/atom/electron/blob/master/docs/api/command-line-switches.md
 
 app.commandLine.appendSwitch('remote-debugging-port', '8315')
 app.commandLine.appendSwitch('host-rules', 'MAP * 127.0.0.1')
@@ -448,7 +436,7 @@ autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName, releaseDa
   console.log('update-downloaded', releaseNotes, releaseName, releaseDate, updateURL)
 })
 
-// browser-window
+// BrowserWindow
 // https://github.com/atom/electron/blob/master/docs/api/browser-window.md
 
 let win3 = new BrowserWindow({ width: 800, height: 600, show: false })
@@ -461,6 +449,18 @@ win3.show()
 
 const toolbarRect = document.getElementById('toolbar').getBoundingClientRect()
 win3.setSheetOffset(toolbarRect.height)
+
+let window = new BrowserWindow()
+window.setProgressBar(0.5)
+window.setRepresentedFilename('/etc/passwd')
+window.setDocumentEdited(true)
+window.previewFile('/path/to/file')
+window.previewFile('/path/to/file', 'Displayed Name')
+window.setVibrancy('menu')
+window.setVibrancy('titlebar')
+window.setVibrancy('selection')
+window.setVibrancy('popover')
+window.setIcon('/path/to/icon')
 
 const installed = BrowserWindow.getDevToolsExtensions().hasOwnProperty('devtron')
 
@@ -737,7 +737,7 @@ const template = <Electron.MenuItemConstructorOptions[]> [
 
 menu = Menu.buildFromTemplate(template)
 
-Menu.setApplicationMenu(menu) // Must be called within app.on('ready', function(){ ... });
+Menu.setApplicationMenu(menu) // Must be called within app.whenReady().then(function(){ ... });
 
 Menu.buildFromTemplate([
   { label: '4', id: '4' },
@@ -756,10 +756,58 @@ Menu.buildFromTemplate([
   { label: '3' }
 ])
 
+// All possible MenuItem roles
+Menu.buildFromTemplate([
+  { role: 'undo' },
+  { role: 'redo' },
+  { role: 'cut' },
+  { role: 'copy' },
+  { role: 'paste' },
+  { role: 'pasteAndMatchStyle' },
+  { role: 'delete' },
+  { role: 'selectAll' },
+  { role: 'reload' },
+  { role: 'forceReload' },
+  { role: 'toggleDevTools' },
+  { role: 'resetZoom' },
+  { role: 'zoomIn' },
+  { role: 'zoomOut' },
+  { role: 'togglefullscreen' },
+  { role: 'window' },
+  { role: 'minimize' },
+  { role: 'close' },
+  { role: 'help' },
+  { role: 'about' },
+  { role: 'services' },
+  { role: 'hide' },
+  { role: 'hideOthers' },
+  { role: 'unhide' },
+  { role: 'quit' },
+  { role: 'startSpeaking' },
+  { role: 'stopSpeaking' },
+  { role: 'close' },
+  { role: 'minimize' },
+  { role: 'zoom'  },
+  { role: 'front' },
+  { role: 'appMenu' },
+  { role: 'fileMenu' },
+  { role: 'editMenu' },
+  { role: 'viewMenu' },
+  { role: 'windowMenu' },
+  { role: 'recentDocuments' },
+  { role: 'clearRecentDocuments' },
+  { role: 'toggleTabBar' },
+  { role: 'selectNextTab' },
+  { role: 'selectPreviousTab' },
+  { role: 'mergeAllWindows' },
+  { role: 'clearRecentDocuments' },
+  { role : 'moveTabToNewWindow'}
+])
+
 // net
 // https://github.com/electron/electron/blob/master/docs/api/net.md
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   const request = net.request('https://github.com')
   request.setHeader('Some-Custom-Header-Name', 'Some-Custom-Header-Value')
   const header = request.getHeader('Some-Custom-Header-Name')
@@ -804,7 +852,7 @@ app.on('ready', () => {
 // power-monitor
 // https://github.com/atom/electron/blob/master/docs/api/power-monitor.md
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   powerMonitor.on('suspend', () => {
     console.log('The system is going to sleep')
   })
@@ -830,7 +878,7 @@ powerSaveBlocker.stop(id)
 // protocol
 // https://github.com/atom/electron/blob/master/docs/api/protocol.md
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   protocol.registerSchemesAsPrivileged([{ scheme: 'https', privileges: { standard: true, allowServiceWorkers: true } }])
 
   protocol.registerFileProtocol('atom', (request, callback) => {
@@ -862,7 +910,7 @@ app.on('ready', () => {
 // https://github.com/atom/electron/blob/master/docs/api/tray.md
 
 let appIcon: Electron.Tray = null
-app.on('ready', () => {
+app.whenReady().then(() => {
   appIcon = new Tray('/path/to/my/icon')
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Item1', type: 'radio' },
@@ -870,10 +918,17 @@ app.on('ready', () => {
     { label: 'Item3', type: 'radio', checked: true },
     { label: 'Item4', type: 'radio' }
   ])
+
+  appIcon.setTitle('title')
   appIcon.setToolTip('This is my application.')
-  appIcon.setContextMenu(contextMenu)
+
   appIcon.setImage('/path/to/new/icon')
+  appIcon.setPressedImage('/path/to/new/icon')
+
   appIcon.popUpContextMenu(contextMenu, { x: 100, y: 100 })
+  appIcon.setContextMenu(contextMenu)
+
+  appIcon.setIgnoreDoubleClickEvents(true)
 
   appIcon.on('click', (event, bounds) => {
     console.log('click', event, bounds)
@@ -885,7 +940,12 @@ app.on('ready', () => {
 
   appIcon.displayBalloon({
     title: 'Hello World!',
-    content: 'This the the balloon content.'
+    content: 'This the the balloon content.',
+    iconType: 'error',
+    icon: 'path/to/icon',
+    respectQuietTime: true,
+    largeIcon: true,
+    noSound: true
   })
 })
 
@@ -956,12 +1016,12 @@ process.setFdLimit(8192)
 // screen
 // https://github.com/atom/electron/blob/master/docs/api/screen.md
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   const size = screen.getPrimaryDisplay().workAreaSize
   mainWindow = new BrowserWindow({ width: size.width, height: size.height })
 })
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   const displays = screen.getAllDisplays()
   let externalDisplay: any = null
   for (const i in displays) {
@@ -995,8 +1055,11 @@ app.on('ready', () => {
 // https://github.com/atom/electron/blob/master/docs/api/shell.md
 
 shell.showItemInFolder('/home/user/Desktop/test.txt')
-shell.openItem('/home/user/Desktop/test.txt')
 shell.moveItemToTrash('/home/user/Desktop/test.txt')
+
+shell.openPath('/home/user/Desktop/test.txt').then(err => {
+  if (err) console.log(err)
+})
 
 shell.openExternal('https://github.com', {
   activate: false
@@ -1127,7 +1190,7 @@ session.defaultSession.webRequest.onBeforeSendHeaders(filter, function (details:
   callback({ cancel: false, requestHeaders: details.requestHeaders })
 })
 
-app.on('ready', function () {
+app.whenReady().then(function () {
   const protocol = session.defaultSession.protocol
   protocol.registerFileProtocol('atom', function (request, callback) {
     const url = request.url.substr(7)
